@@ -344,7 +344,7 @@ export default function ResidentDashboard({ session }) {
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </main>
     </div>
   );

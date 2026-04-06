@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import Sidebar from '../components/Sidebar';
+import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
-import MobileNavbar from '../components/MobileNavbar';
 import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit, Video, Trash2, LogOut } from 'lucide-react';
 
 const GROQ_SYSTEM_PROMPT = `You are EaseStay's AI issue categorization engine for a PG accommodation system.
@@ -215,12 +214,7 @@ export default function ResidentDashboard({ session }) {
   if (!profile) return null;
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
-      <Sidebar role="resident" activeTab={activeTab} setActiveTab={setActiveTab} />
-      
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        <MobileNavbar role="resident" activeTab={activeTab} setActiveTab={setActiveTab} />
-
+    <DashboardLayout profile={profile} role="resident" title="Resident Dashboard" activeTab={activeTab} setActiveTab={setActiveTab}>
         <main className="flex-1 p-5 sm:p-8 md:p-12 overflow-y-auto w-full max-w-5xl mx-auto">
           {activeTab === 'profile' && <ProfilePage session={session} />}
 
@@ -429,7 +423,6 @@ export default function ResidentDashboard({ session }) {
             </div>
           )}
         </main>
-      </div>
-    </div>
+    </DashboardLayout>
   );
 }

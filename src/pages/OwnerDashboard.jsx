@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import Sidebar from '../components/Sidebar';
+import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
-import MobileNavbar from '../components/MobileNavbar';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
@@ -261,12 +260,7 @@ export default function OwnerDashboard({ session }) {
   const categories = [...new Set(issues.map(i => i.category))];
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
-      <Sidebar role="owner" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }} notificationCount={notifCount} />
-      
-      <div className="flex-1 flex flex-col min-h-screen min-w-0">
-        <MobileNavbar role="owner" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }} notificationCount={notifCount} />
-
+    <DashboardLayout profile={profile} role="owner" title="Owner Dashboard" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }}>
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
       {emergency && <EmergencyAlert issue={emergency} onDismiss={() => setEmergency(null)} />}
       {confirm && <ConfirmModal title={confirm.title} message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
@@ -642,7 +636,6 @@ export default function OwnerDashboard({ session }) {
           </div>
         )}
         </main>
-      </div>
-    </div>
+    </DashboardLayout>
   );
 }

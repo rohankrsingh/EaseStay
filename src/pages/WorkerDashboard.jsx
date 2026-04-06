@@ -4,7 +4,7 @@ import Sidebar from '../components/Sidebar';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
 import { Wrench, CheckCircle, Clock, AlertTriangle, Plus, Building2, ChevronDown, Video, Phone, Mail, X } from 'lucide-react';
-
+import MobileNavbar from '../components/MobileNavbar';
 // Shared Jitsi room link per issue ID
 function VideoCallButton({ issueId, issueTitle, compact = false }) {
   const roomName = `easestay-issue-${issueId.slice(0, 8)}`;
@@ -144,12 +144,15 @@ export default function WorkerDashboard({ session }) {
   const workerRoleEmoji = { plumber: '🔧', electrician: '⚡', cleaner: '🧹', maintenance: '🔨' };
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50">
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
       <Sidebar role="worker" activeTab={activeTab} setActiveTab={setActiveTab} />
-      {activeCommunity && <NotificationSystem communityId={activeCommunity.community_id} role="worker" />}
+      
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+        <MobileNavbar role="worker" activeTab={activeTab} setActiveTab={setActiveTab} />
+        {activeCommunity && <NotificationSystem communityId={activeCommunity.community_id} role="worker" />}
 
-      <main className="flex-1 p-8 md:p-12 overflow-y-auto">
-        {activeTab === 'profile' && <ProfilePage session={session} />}
+        <main className="flex-1 p-5 sm:p-8 md:p-12 overflow-y-auto w-full max-w-5xl mx-auto">
+          {activeTab === 'profile' && <ProfilePage session={session} />}
 
         {activeTab === 'tasks' && (
           <div className="max-w-3xl mx-auto space-y-8">
@@ -259,7 +262,8 @@ export default function WorkerDashboard({ session }) {
             </div>
           </div>
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

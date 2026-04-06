@@ -1,5 +1,7 @@
-import { LogOut, LayoutDashboard, Settings, User, Users, Bell } from 'lucide-react';
+import { LogOut,Building, LayoutDashboard, Settings, User, Users, Bell } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+
+
 
 export default function Sidebar({ role, activeTab, setActiveTab, notificationCount = 0 }) {
   const handleSignOut = async () => {
@@ -8,10 +10,12 @@ export default function Sidebar({ role, activeTab, setActiveTab, notificationCou
 
   const residentNav = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'overview', label: 'Overview', icon: LayoutDashboard }, // Overview tab for resolved issues
     { id: 'profile', label: 'My Profile', icon: User },
   ];
 
   const ownerNav = [
+    { id: 'communities_overview', label: 'Communities', icon: Building },
     { id: 'issues', label: 'Issue Management', icon: LayoutDashboard },
     { id: 'residents', label: 'Resident Profiles', icon: Users },
     { id: 'workers', label: 'Technicians', icon: Settings },

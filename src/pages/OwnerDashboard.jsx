@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import Sidebar from '../components/Sidebar';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
+import MobileNavbar from '../components/MobileNavbar';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
@@ -100,11 +101,21 @@ export default function OwnerDashboard({ session }) {
   const fetchData = async () => {
     const { data: prof } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
     setProfile(prof || { full_name: 'Owner' });
-    const { data: comms } = await supabase.from('communities').select('*').eq('owner_id', session.user.id);
-    setCommunities(comms || []);
-    if (comms && comms.length > 0) {
-      setActiveCommunity(comms[0]);
-      fetchCommunityData(comms[0].id);
+    
+    // Fetch communities where user is owner OR a co_owner
+    const [{ data: ownedComms }, { data: coOwnedMembers }] = await Promise.all([
+      supabase.from('communities').select('*').eq('owner_id', session.user.id),
+      supabase.from('members').select('communities(*)').eq('user_id', session.user.id).eq('community_role', 'co_owner')
+    ]);
+    
+    const allComms = [...(ownedComms || []), ...(coOwnedMembers?.map(m => m.communities) || [])];
+    const uniqueComms = Array.from(new Map(allComms.map(c => [c.id, c])).values()).filter(Boolean);
+    
+    setCommunities(uniqueComms);
+    if (uniqueComms.length > 0) {
+      setActiveCommunity(uniqueComms[0]);
+      fetchCommunityData(uniqueComms[0].id);
+      if (activeTab === 'issues') setActiveTab('communities_overview'); // Default to overview
     }
   };
 
@@ -211,6 +222,12 @@ export default function OwnerDashboard({ session }) {
     fetchCommunityData(activeCommunity.id);
   }, [activeCommunity]);
 
+  const handleKickMember = useCallback(async (memberId) => {
+    if (!window.confirm('Are you sure you want to kick this member from the community? They will lose all access.')) return;
+    await supabase.from('members').delete().eq('id', memberId);
+    fetchCommunityData(activeCommunity.id);
+  }, [activeCommunity]);
+
   // Filtered issues
   const filteredIssues = issues.filter(issue => {
     if (filterPriority && issue.priority !== filterPriority) return false;
@@ -244,8 +261,11 @@ export default function OwnerDashboard({ session }) {
   const categories = [...new Set(issues.map(i => i.category))];
 
   return (
-    <div className="flex min-h-screen bg-slate-50/50">
+    <div className="flex flex-col md:flex-row min-h-screen bg-slate-50/50">
       <Sidebar role="owner" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }} notificationCount={notifCount} />
+      
+      <div className="flex-1 flex flex-col min-h-screen min-w-0">
+        <MobileNavbar role="owner" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }} notificationCount={notifCount} />
 
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
       {emergency && <EmergencyAlert issue={emergency} onDismiss={() => setEmergency(null)} />}
@@ -271,7 +291,7 @@ export default function OwnerDashboard({ session }) {
         </div>
       )}
 
-      <main className="flex-1 p-8 md:p-12 overflow-y-auto">
+      <main className="flex-1 p-5 sm:p-8 md:p-12 overflow-y-auto w-full max-w-5xl mx-auto">
         {activeTab === 'profile' && <ProfilePage session={session} />}
 
         {activeTab !== 'profile' && !activeCommunity && communities.length === 0 && (
@@ -322,6 +342,39 @@ export default function OwnerDashboard({ session }) {
                 </div>
               )}
             </header>
+
+            {/* ── COMMUNITIES OVERVIEW TAB ── */}
+            {activeTab === 'communities_overview' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Building size={24} className="text-primary" /> My Communities</h2>
+                  <button onClick={() => setActiveTab('new_community')} className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 text-white text-sm font-bold rounded-xl shadow-sm hover:bg-slate-800 transition-all">
+                    <Plus size={16} /> New PG
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                  {communities.map(com => (
+                    <div key={com.id} onClick={() => { setActiveCommunity(com); fetchCommunityData(com.id); setActiveTab('issues'); }}
+                      className="group cursor-pointer bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 transition-all overflow-hidden relative">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-bl-[100px] z-0" />
+                      <div className="relative z-10 flex flex-col h-full">
+                        <div className="w-14 h-14 bg-primary/10 text-primary flex items-center justify-center rounded-2xl mb-4 shrink-0 group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all">
+                          <Building size={28} strokeWidth={2.5} />
+                        </div>
+                        <h3 className="text-xl font-extrabold text-slate-900 mb-1">{com.name}</h3>
+                        <p className="text-sm font-semibold text-slate-400 uppercase tracking-widest mb-6">Invite Code: <span className="text-primary">{com.join_code}</span></p>
+                        
+                        <div className="mt-auto flex items-center gap-2">
+                          <span className={`text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1 rounded-lg ${com.owner_id === session.user.id ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-blue-100 text-blue-800 border border-blue-200'}`}>
+                            {com.owner_id === session.user.id ? 'Owner' : 'Co-Owner'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* ── ISSUES TAB ── */}
             {activeTab === 'issues' && (
@@ -571,8 +624,12 @@ export default function OwnerDashboard({ session }) {
                               <Crown size={11} /> {isCoOwner ? 'Remove Co-Owner' : 'Make Co-Owner'}
                             </button>
                             <button onClick={() => handleBanMember(member.id, member.status)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ml-auto ${isBanned ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'}`}>
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isBanned ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'}`}>
                               {isBanned ? <><ShieldOff size={11} /> Unban</> : <><Shield size={11} /> Ban</>}
+                            </button>
+                            <button onClick={() => handleKickMember(member.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all ml-auto">
+                              <Trash2 size={11} /> Kick
                             </button>
                           </div>
                         </div>
@@ -584,7 +641,8 @@ export default function OwnerDashboard({ session }) {
             )}
           </div>
         )}
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

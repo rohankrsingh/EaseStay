@@ -90,8 +90,8 @@ export default function ProfilePage({ session }) {
               {roleLabel[profile?.role] || profile?.role}
             </span>
           </div>
-          <div className="flex items-center gap-2 mt-2 text-sm text-slate-500 font-medium">
-            <Mail size={14} />
+          <div className="flex items-center gap-2 mt-3 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl w-max">
+            <Mail size={14} className="text-primary" />
             {session.user.email}
           </div>
         </div>
@@ -150,9 +150,10 @@ export default function ProfilePage({ session }) {
               type="email"
               value={session.user.email}
               disabled
-              className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 pt-6 pb-2 text-slate-400 cursor-not-allowed transition-all shadow-sm font-medium"
+              className="w-full bg-primary/5 border border-primary/20 rounded-xl px-4 pt-6 pb-2 text-slate-700 cursor-not-allowed shadow-sm font-bold"
             />
-            <label className="absolute left-4 top-2 text-[10px] uppercase tracking-wider font-bold text-slate-400">Email Address (read-only)</label>
+            <label className="absolute left-4 top-2 text-[10px] uppercase tracking-wider font-bold text-primary/70">Email Address (verified)</label>
+            <Mail size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-primary/50" />
           </div>
 
           <button
@@ -171,15 +172,19 @@ export default function ProfilePage({ session }) {
           <Shield size={18} className="text-primary" /> Account Details
         </h3>
         <div className="space-y-3 text-sm font-medium">
-          <div className="flex justify-between py-2 border-b border-slate-100">
+          <div className="flex justify-between items-center py-2 border-b border-slate-100">
+            <span className="text-slate-400 uppercase text-[10px] tracking-wider font-extrabold">Email</span>
+            <span className="text-slate-700 font-semibold">{session.user.email}</span>
+          </div>
+          <div className="flex justify-between items-center py-2 border-b border-slate-100">
             <span className="text-slate-400 uppercase text-[10px] tracking-wider font-extrabold">User ID</span>
             <span className="text-slate-600 font-mono text-xs">{session.user.id.slice(0, 16)}...</span>
           </div>
-          <div className="flex justify-between py-2 border-b border-slate-100">
+          <div className="flex justify-between items-center py-2 border-b border-slate-100">
             <span className="text-slate-400 uppercase text-[10px] tracking-wider font-extrabold">Role</span>
             <span className="text-slate-700">{roleLabel[profile?.role] || profile?.role}</span>
           </div>
-          <div className="flex justify-between py-2">
+          <div className="flex justify-between items-center py-2">
             <span className="text-slate-400 uppercase text-[10px] tracking-wider font-extrabold">Member Since</span>
             <span className="text-slate-700">{new Date(profile?.created_at).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</span>
           </div>

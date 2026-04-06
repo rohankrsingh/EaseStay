@@ -5,7 +5,8 @@ import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
-  Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell
+  Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
+  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight
 } from 'lucide-react';
 
 // ── Confirmation Modal ──
@@ -194,6 +195,22 @@ export default function OwnerDashboard({ session }) {
     fetchCommunityData(activeCommunity.id);
   };
 
+  const handleBanMember = useCallback(async (memberId, currentStatus) => {
+    const newStatus = currentStatus === 'banned' ? 'active' : 'banned';
+    const label = newStatus === 'banned' ? 'Ban this member from the community?' : 'Unban this member?';
+    if (!window.confirm(label)) return;
+    await supabase.from('members').update({ status: newStatus }).eq('id', memberId);
+    fetchCommunityData(activeCommunity.id);
+  }, [activeCommunity]);
+
+  const handleSetRole = useCallback(async (memberId, currentRole) => {
+    const newRole = currentRole === 'co_owner' ? 'resident' : 'co_owner';
+    const label = newRole === 'co_owner' ? 'Make this member a Co-Owner?' : 'Remove co-owner privileges?';
+    if (!window.confirm(label)) return;
+    await supabase.from('members').update({ community_role: newRole }).eq('id', memberId);
+    fetchCommunityData(activeCommunity.id);
+  }, [activeCommunity]);
+
   // Filtered issues
   const filteredIssues = issues.filter(issue => {
     if (filterPriority && issue.priority !== filterPriority) return false;
@@ -230,13 +247,8 @@ export default function OwnerDashboard({ session }) {
     <div className="flex min-h-screen bg-slate-50/50">
       <Sidebar role="owner" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }} notificationCount={notifCount} />
 
-      {/* Notification System */}
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
-
-      {/* Emergency Alert */}
       {emergency && <EmergencyAlert issue={emergency} onDismiss={() => setEmergency(null)} />}
-
-      {/* Confirm Modal */}
       {confirm && <ConfirmModal title={confirm.title} message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
 
       {/* Member detail modal */}
@@ -275,20 +287,38 @@ export default function OwnerDashboard({ session }) {
 
         {activeTab !== 'profile' && (activeCommunity || communities.length > 0) && (
           <div className="space-y-10 w-full max-w-5xl mx-auto">
-            <header className="flex flex-col sm:flex-row justify-between sm:items-end border-b border-slate-200 pb-8 gap-4">
-              <div>
-                <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">PG Dashboard</h1>
-                <p className="text-slate-500 font-medium">Hello, {profile?.full_name}</p>
-                {notifCount > 0 && activeTab !== 'issues' && (
-                  <button onClick={() => { setActiveTab('issues'); setNotifCount(0); }} className="mt-2 flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full animate-pulse">
-                    <Bell size={12} /> {notifCount} new issue{notifCount > 1 ? 's' : ''} — View
-                  </button>
+            <header className="flex flex-col gap-4 border-b border-slate-200 pb-8">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-end gap-4">
+                <div>
+                  <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">PG Dashboard</h1>
+                  <p className="text-slate-500 font-medium">Hello, {profile?.full_name}</p>
+                  {notifCount > 0 && activeTab !== 'issues' && (
+                    <button onClick={() => { setActiveTab('issues'); setNotifCount(0); }} className="mt-2 flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full animate-pulse">
+                      <Bell size={12} /> {notifCount} new issue{notifCount > 1 ? 's' : ''} — View
+                    </button>
+                  )}
+                </div>
+                {activeCommunity && (
+                  <div className="bg-white border border-slate-200 px-5 py-3 rounded-2xl shadow-sm w-max">
+                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mb-1">Invite Code</p>
+                    <code className="text-2xl font-mono text-primary font-bold tracking-[0.2em]">{activeCommunity.join_code}</code>
+                  </div>
                 )}
               </div>
-              {activeCommunity && (
-                <div className="bg-white border border-slate-200 px-5 py-3 rounded-2xl shadow-sm w-max">
-                  <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mb-1">Invite Code</p>
-                  <code className="text-2xl font-mono text-primary font-bold tracking-[0.2em]">{activeCommunity.join_code}</code>
+              {/* Multi-community switcher */}
+              {communities.length > 1 && (
+                <div className="flex flex-wrap gap-2 items-center">
+                  <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider">Community:</span>
+                  {communities.map(com => (
+                    <button key={com.id} onClick={() => { setActiveCommunity(com); fetchCommunityData(com.id); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-bold border transition-all ${activeCommunity?.id === com.id ? 'bg-primary/10 text-primary border-primary/20' : 'bg-white border-slate-200 text-slate-600 hover:border-primary/20 hover:text-primary'}`}>
+                      <Building size={13} /> {com.name}
+                    </button>
+                  ))}
+                  <button onClick={() => { setNewCommunityName(''); setActiveTab('new_community'); }}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-sm font-bold border border-dashed border-slate-300 text-slate-400 hover:border-primary/30 hover:text-primary transition-all">
+                    <Plus size={13} /> New PG
+                  </button>
                 </div>
               )}
             </header>
@@ -512,18 +542,42 @@ export default function OwnerDashboard({ session }) {
                   <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">No residents yet.</div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
-                    {members.map(member => (
-                      <button key={member.id} onClick={() => setSelectedMember(member)}
-                        className="p-5 border border-slate-200 rounded-2xl bg-white shadow-sm flex items-center gap-4 hover:shadow-md hover:border-primary/30 transition-all group text-left w-full">
-                        <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-extrabold text-xl group-hover:bg-primary group-hover:text-white transition-colors shrink-0">{member.room_number}</div>
-                        <div className="overflow-hidden">
-                          <h3 className="font-bold text-lg text-slate-900 truncate">{member.profiles?.full_name || 'Unknown'}</h3>
-                          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Room {member.room_number}</p>
-                          {member.profiles?.phone && <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1"><Phone size={10} />{member.profiles.phone}</p>}
+                    {members.map(member => {
+                      const isBanned = member.status === 'banned';
+                      const isCoOwner = member.community_role === 'co_owner';
+                      return (
+                        <div key={member.id}
+                          className={`p-5 border rounded-2xl bg-white shadow-sm transition-all ${isBanned ? 'border-red-200 bg-red-50/30 opacity-70' : 'border-slate-200 hover:shadow-md'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-extrabold text-xl shrink-0 ${isBanned ? 'bg-red-100 text-red-400' : 'bg-primary/10 text-primary'}`}>{member.room_number}</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-bold text-lg text-slate-900 truncate">{member.profiles?.full_name || 'Unknown'}</h3>
+                                {isCoOwner && <span className="flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full"><Crown size={9} /> Co-Owner</span>}
+                                {isBanned && <span className="text-[9px] font-extrabold uppercase tracking-wider text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">Banned</span>}
+                              </div>
+                              <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Room {member.room_number}</p>
+                              {member.profiles?.phone && <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1"><Phone size={10} />{member.profiles.phone}</p>}
+                            </div>
+                          </div>
+                          {/* Actions */}
+                          <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t border-slate-100">
+                            <button onClick={() => setSelectedMember(member)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-100 transition-all">
+                              View Details
+                            </button>
+                            <button onClick={() => handleSetRole(member.id, member.community_role)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isCoOwner ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                              <Crown size={11} /> {isCoOwner ? 'Remove Co-Owner' : 'Make Co-Owner'}
+                            </button>
+                            <button onClick={() => handleBanMember(member.id, member.status)}
+                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ml-auto ${isBanned ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'}`}>
+                              {isBanned ? <><ShieldOff size={11} /> Unban</> : <><Shield size={11} /> Ban</>}
+                            </button>
+                          </div>
                         </div>
-                        <div className="ml-auto text-slate-300 group-hover:text-primary transition-colors shrink-0">→</div>
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import Sidebar from '../components/Sidebar';
 import ProfilePage from './ProfilePage';
-import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit } from 'lucide-react';
+import NotificationSystem from '../components/NotificationSystem';
+import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit, Video, Trash2 } from 'lucide-react';
 
 const GROQ_SYSTEM_PROMPT = `You are EaseStay's AI issue categorization engine for a PG accommodation system.
 Analyze the resident's issue report and return ONLY valid JSON with no extra text.
@@ -90,6 +91,12 @@ export default function ResidentDashboard({ session }) {
   }, [session.user.id, fetchIssues]);
 
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
+
+  const deleteIssue = useCallback(async (issueId) => {
+    if (!window.confirm('Delete this issue request?')) return;
+    await supabase.from('issues').delete().eq('id', issueId).eq('user_id', session.user.id);
+    setIssues(prev => prev.filter(i => i.id !== issueId));
+  }, [session.user.id]);
 
   useEffect(() => {
     if (!memberInfo) return;
@@ -219,6 +226,7 @@ export default function ResidentDashboard({ session }) {
 
         {activeTab !== 'profile' && memberInfo && (
           <div className="space-y-10 w-full">
+            {memberInfo && <NotificationSystem communityId={memberInfo.community_id} role="resident" />}
             <header className="flex justify-between items-end border-b border-slate-200 pb-8 w-full">
               <div>
                 <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary font-bold text-xs mb-3">
@@ -311,6 +319,11 @@ export default function ResidentDashboard({ session }) {
                                 </p>
                               </div>
                               <div className="flex gap-2 flex-wrap">
+                                {/* Video Call - same Jitsi room as owner/worker */}
+                                <a href={`https://meet.jit.si/easestay-issue-${issue.id.slice(0, 8)}`} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 text-xs font-bold rounded-lg hover:bg-blue-100 transition-all shadow-sm">
+                                  <Video size={12} /> Video Call
+                                </a>
                                 {issue.workers.phone && (
                                   <a href={`tel:${issue.workers.phone}`}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-100 transition-all shadow-sm">
@@ -320,7 +333,7 @@ export default function ResidentDashboard({ session }) {
                                 {issue.workers.email && (
                                   <a href={`mailto:${issue.workers.email}?subject=Issue: ${encodeURIComponent(issue.title)}&body=Hi ${issue.workers.name},%0A%0AI have an issue (Room ${memberInfo.room_number}): ${encodeURIComponent(issue.description)}`}
                                     className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-100 transition-all shadow-sm">
-                                    <Mail size={12} /> Email Technician
+                                    <Mail size={12} /> Email
                                   </a>
                                 )}
                               </div>
@@ -331,6 +344,13 @@ export default function ResidentDashboard({ session }) {
                             </div>
                           )}
                         </div>
+                        {/* Delete issue button */}
+                        {issue.status === 'Pending' && (
+                          <button onClick={() => deleteIssue(issue.id)}
+                            className="mt-3 flex items-center gap-1.5 text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors">
+                            <Trash2 size={11} /> Delete Request
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}

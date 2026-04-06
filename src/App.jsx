@@ -23,7 +23,7 @@ function App() {
   }, []);
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center min-h-screen text-slate-500 bg-slate-50 font-medium tracking-wide">Loading EaseStay...</div>;
+    return <div className="flex h-screen items-center justify-center text-slate-500 bg-slate-50 font-medium tracking-wide">Loading EaseStay...</div>;
   }
 
   return (
@@ -39,33 +39,79 @@ function App() {
   );
 }
 
+// ── Co-Owner wrapper: resident who's a co-owner can switch between both views ──
+function CoOwnerDashboard({ session }) {
+  const [mode, setMode] = useState('resident');
+  return (
+    <div>
+      {/* Floating mode badge */}
+      <div className="fixed top-4 right-4 z-[80] flex items-center gap-1 bg-white border border-slate-200 shadow-xl rounded-2xl p-1">
+        <button
+          onClick={() => setMode('resident')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${mode === 'resident' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+        >
+          🏠 Resident
+        </button>
+        <button
+          onClick={() => setMode('owner')}
+          className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${mode === 'owner' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+        >
+          🏢 Owner View
+        </button>
+      </div>
+      {mode === 'resident'
+        ? <ResidentDashboard session={session} />
+        : <OwnerDashboard session={session} coOwnerMode />
+      }
+    </div>
+  );
+}
+
+// ── Role-based router: checks profile role + co-owner status ──
 function RoleBasedRouter({ session }) {
   const [role, setRole] = useState(null);
+  const [isCoOwner, setIsCoOwner] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchRole() {
+      // 1. Get base role from profiles
       const { data } = await supabase
         .from('profiles').select('role').eq('id', session.user.id).maybeSingle();
+
+      let resolvedRole = 'resident';
       if (data) {
-        setRole(data.role);
+        resolvedRole = data.role;
       } else {
         await supabase.from('profiles').insert([
           { id: session.user.id, full_name: 'Resident User', role: 'resident' }
         ]);
-        setRole('resident');
       }
+      setRole(resolvedRole);
+
+      // 2. Only residents may also be co-owners
+      if (resolvedRole === 'resident') {
+        const { data: memberData } = await supabase
+          .from('members')
+          .select('community_role')
+          .eq('user_id', session.user.id)
+          .eq('community_role', 'co_owner')
+          .maybeSingle();
+        if (memberData) setIsCoOwner(true);
+      }
+
       setLoading(false);
     }
     fetchRole();
   }, [session]);
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center min-h-screen text-slate-500 bg-slate-50 font-medium">Loading profile...</div>;
+    return <div className="flex h-screen items-center justify-center text-slate-500 bg-slate-50 font-medium">Loading profile...</div>;
   }
 
   if (role === 'owner') return <OwnerDashboard session={session} />;
   if (role === 'worker') return <WorkerDashboard session={session} />;
+  if (isCoOwner) return <CoOwnerDashboard session={session} />;
   return <ResidentDashboard session={session} />;
 }
 

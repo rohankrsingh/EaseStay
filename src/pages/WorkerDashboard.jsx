@@ -110,6 +110,8 @@ export default function WorkerDashboard({ session }) {
       role: workerRole,
       community_id: com.id,
       profile_id: session.user.id,
+      phone: profile.phone || '',
+      email: session.user.email,
     }]);
     if (insertErr) { setJoinError(insertErr.message); return; }
     setJoinCode('');

@@ -46,6 +46,14 @@ export default function ProfilePage({ session }) {
     if (error) {
       setError(error.message);
     } else {
+      // Keep worker references in sync with profile updates
+      if (profile?.role === 'worker') {
+        await supabase
+          .from('workers')
+          .update({ name: fullName, phone: phone || '' })
+          .eq('profile_id', session.user.id);
+      }
+      
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     }

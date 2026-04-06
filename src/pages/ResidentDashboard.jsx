@@ -350,6 +350,12 @@ export default function ResidentDashboard({ session }) {
                                           <Phone size={12} /> Call {issue.workers.phone}
                                         </a>
                                       )}
+                                      {issue.workers.email && (
+                                        <a href={`mailto:${issue.workers.email}`}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-300 text-amber-800 text-xs font-bold rounded-lg hover:bg-amber-100 transition-all shadow-sm">
+                                          <Mail size={12} /> Email
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
                                 ) : (

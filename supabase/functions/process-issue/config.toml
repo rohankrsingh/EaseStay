@@ -1,0 +1,2 @@
+[functions.process-issue]
+verify_jwt = false

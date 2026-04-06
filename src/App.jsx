@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { supabase } from './lib/supabase';
 import Auth from './pages/Auth';
+import LandingPage from './pages/LandingPage';
 import ResidentDashboard from './pages/ResidentDashboard';
 import OwnerDashboard from './pages/OwnerDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
@@ -29,7 +30,7 @@ function App() {
     <div className="min-h-screen text-slate-900 bg-slate-50 font-sans selection:bg-primary/20">
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={session ? <Navigate to="/dashboard" /> : <Navigate to="/auth" />} />
+          <Route path="/" element={<LandingPage session={session} />} />
           <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={session ? <RoleBasedRouter session={session} /> : <Navigate to="/auth" />} />
         </Routes>

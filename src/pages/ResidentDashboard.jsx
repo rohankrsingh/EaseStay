@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import Sidebar from '../components/Sidebar';
 import ProfilePage from './ProfilePage';
@@ -17,9 +17,15 @@ export default function ResidentDashboard({ session }) {
   const [issueText, setIssueText] = useState('');
   const recognitionRef = useRef(null);
 
-  useEffect(() => { fetchUserData(); }, [session]);
+  const fetchIssues = useCallback(async (communityId) => {
+    const { data } = await supabase.from('issues')
+      .select('*, workers(id, name, role, phone, email)')
+      .eq('community_id', communityId).eq('user_id', session.user.id)
+      .order('created_at', { ascending: false });
+    if (data) setIssues(data);
+  }, [session.user.id]);
 
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     const { data: profData } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
     setProfile(profData || { full_name: 'Unknown User' });
 
@@ -30,15 +36,9 @@ export default function ResidentDashboard({ session }) {
       setCommunity(comData);
       fetchIssues(memData.community_id);
     }
-  };
+  }, [session.user.id, fetchIssues]);
 
-  const fetchIssues = async (communityId) => {
-    const { data } = await supabase.from('issues')
-      .select('*, workers(id, name, role, phone, email)')
-      .eq('community_id', communityId).eq('user_id', session.user.id)
-      .order('created_at', { ascending: false });
-    if (data) setIssues(data);
-  };
+  useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
   useEffect(() => {
     if (!memberInfo) return;
@@ -47,7 +47,7 @@ export default function ResidentDashboard({ session }) {
         fetchIssues(memberInfo.community_id);
       }).subscribe();
     return () => supabase.removeChannel(sub);
-  }, [memberInfo]);
+  }, [memberInfo, fetchIssues]);
 
   const handleJoinCommunity = async (e) => {
     e.preventDefault();
@@ -167,7 +167,7 @@ export default function ResidentDashboard({ session }) {
             </header>
 
             {/* Raise Issue */}
-            <div className="space-y-4 bg-white p-8 rounded-[2rem] border border-slate-200 shadow-sm">
+            <div className="space-y-4 bg-white p-8 rounded-4xl border border-slate-200 shadow-sm">
               <h2 className="text-xl font-bold text-slate-900">Report an Issue</h2>
               <p className="text-slate-500 text-sm font-medium">Describe your problem or use voice input for instant reporting.</p>
               <form onSubmit={handleSubmitIssue} className="relative">
@@ -199,7 +199,7 @@ export default function ResidentDashboard({ session }) {
             <div>
               <h2 className="text-xl font-bold mb-6 text-slate-900">Your Recent Issues</h2>
               {issues.length === 0 ? (
-                <div className="p-8 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">
+                <div className="p-8 border border-dashed border-slate-300 rounded-4xl bg-slate-50 text-center text-slate-500 font-medium">
                   No issues reported yet. Your room is in perfect shape! ☀️
                 </div>
               ) : (
@@ -251,7 +251,7 @@ export default function ResidentDashboard({ session }) {
               )}
             </div>
           </div>
-        ) : null}
+        )}
       </main>
     </div>
   );

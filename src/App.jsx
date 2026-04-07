@@ -6,6 +6,8 @@ import LandingPage from './pages/LandingPage';
 import ResidentDashboard from './pages/ResidentDashboard';
 import OwnerDashboard from './pages/OwnerDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
+import CommunitiesPage from './pages/CommunitiesPage';
+import CommunityDetailPage from './pages/CommunityDetailPage';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -31,6 +33,8 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage session={session} />} />
+          <Route path="/communities" element={<CommunitiesPage />} />
+          <Route path="/communities/:id" element={<CommunityDetailPage />} />
           <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={session ? <RoleBasedRouter session={session} /> : <Navigate to="/auth" />} />
         </Routes>

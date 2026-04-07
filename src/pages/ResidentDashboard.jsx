@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
-import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit, Video, Trash2, LogOut } from 'lucide-react';
+import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit, Video, Trash2, LogOut, Star } from 'lucide-react';
 
 const GROQ_SYSTEM_PROMPT = `You are EaseStay's AI issue categorization engine for a PG accommodation system.
 Analyze the resident's issue report and return ONLY valid JSON with no extra text.
@@ -70,6 +70,30 @@ export default function ResidentDashboard({ session }) {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const recognitionRef = useRef(null);
 
+  // Rating Modal State
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [pgRating, setPgRating] = useState(5);
+  const [pgComment, setPgComment] = useState('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+
+  const handleSubmitRating = async (e) => {
+    e.preventDefault();
+    setIsSubmittingRating(true);
+    const { error } = await supabase.from('reviews').upsert({
+      community_id: memberInfo.community_id,
+      resident_id: session.user.id,
+      rating: pgRating,
+      comment: pgComment,
+    }, { onConflict: 'community_id, resident_id' });
+    
+    setIsSubmittingRating(false);
+    if (error) alert("Error submitting rating: " + error.message);
+    else {
+      alert("Thanks for your feedback!");
+      setShowRatingModal(false);
+    }
+  };
+
   const fetchIssues = useCallback(async (communityId) => {
     const { data } = await supabase.from('issues')
       .select('*, workers(id, name, role, phone, email)')
@@ -112,7 +136,7 @@ export default function ResidentDashboard({ session }) {
     try {
       const { data: com, error } = await supabase.from('communities').select('id').eq('join_code', joinCode).single();
       if (error || !com) throw new Error('Community not found. Double-check the code.');
-      const { error: joinErr } = await supabase.from('members').insert([{ user_id: session.user.id, community_id: com.id, room_number: roomNumber }]);
+      const { error: joinErr } = await supabase.from('members').insert([{ user_id: session.user.id, community_id: com.id, room_number: roomNumber, status: 'pending' }]);
       if (joinErr) throw joinErr;
       fetchUserData();
     } catch (err) { alert(err.message); }
@@ -162,7 +186,27 @@ export default function ResidentDashboard({ session }) {
       const ai = await callGroqAI(issueText);
       setAiResult(ai);
 
-      // Step 2: Insert into Supabase with AI results
+      // Step 2: Auto-assign worker if issue is critical
+      let assigned_worker_id = null;
+      if (ai.priority === 'Critical' || ai.is_emergency) {
+        const roleMap = { 'Plumbing': 'plumber', 'Electrical': 'electrician', 'Cleaning': 'cleaner' };
+        const targetRole = roleMap[ai.category] || 'maintenance';
+        
+        // Try getting specific role first
+        const { data: specificWorkers } = await supabase.from('workers')
+          .select('id').eq('community_id', memberInfo.community_id).eq('role', targetRole);
+          
+        if (specificWorkers && specificWorkers.length > 0) {
+          assigned_worker_id = specificWorkers[0].id;
+        } else {
+          // Fallback to any worker
+          const { data: anyWorker } = await supabase.from('workers')
+            .select('id').eq('community_id', memberInfo.community_id).limit(1);
+          if (anyWorker && anyWorker.length > 0) assigned_worker_id = anyWorker[0].id;
+        }
+      }
+
+      // Step 3: Insert into Supabase with AI results
       const { error } = await supabase.from('issues').insert([{
         user_id: session.user.id,
         community_id: memberInfo.community_id,
@@ -172,6 +216,7 @@ export default function ResidentDashboard({ session }) {
         category: ai.category || 'Other',
         priority: ai.priority || 'Low',
         status: 'Pending',
+        assigned_worker_id: assigned_worker_id
       }]);
       if (error) throw new Error(error.message);
 
@@ -211,10 +256,59 @@ export default function ResidentDashboard({ session }) {
     return <AlertTriangle className="text-amber-500" size={16} />;
   };
 
+  const handleVerifyResolution = async (issueId) => {
+    try {
+      const { error } = await supabase.from('issues').update({ resident_verified: true }).eq('id', issueId);
+      if (error) throw error;
+      setIssues(prev => prev.map(i => i.id === issueId ? { ...i, resident_verified: true } : i));
+    } catch (err) { alert('Error verifying resolution: ' + err.message); }
+  };
+
+  const handleDisputeResolution = async (issueId) => {
+    try {
+      const { error } = await supabase.from('issues')
+        .update({ status: 'In Progress', priority: 'High', resident_verified: false }).eq('id', issueId);
+      if (error) throw error;
+      setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'In Progress', priority: 'High', resident_verified: false } : i));
+    } catch (err) { alert('Error reopening issue: ' + err.message); }
+  };
+
   if (!profile) return null;
 
   return (
     <DashboardLayout profile={profile} role="resident" title="Resident Dashboard" activeTab={activeTab} setActiveTab={setActiveTab}>
+      {showRatingModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl relative animate-in zoom-in-95">
+             <h2 className="text-2xl font-black text-slate-900 mb-2">Rate {community?.name}</h2>
+             <p className="text-slate-500 font-medium mb-6 text-sm">Your feedback helps rank this PG on the public directory!</p>
+             <form onSubmit={handleSubmitRating} className="space-y-5">
+               <div>
+                  <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-3">Overall Rating</label>
+                  <div className="flex gap-2">
+                    {[1,2,3,4,5].map(star => (
+                      <button key={star} type="button" onClick={() => setPgRating(star)}
+                         className={`p-2 rounded-full transition-all ${pgRating >= star ? 'text-amber-500 hover:scale-110 bg-amber-50' : 'text-slate-300 hover:text-slate-400 bg-slate-50'}`}>
+                         <Star size={32} className={pgRating >= star ? 'fill-amber-500' : ''} />
+                      </button>
+                    ))}
+                  </div>
+               </div>
+               <div>
+                  <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Comments (Optional)</label>
+                  <textarea rows="3" value={pgComment} onChange={e => setPgComment(e.target.value)} className="w-full border border-slate-200 bg-slate-50 rounded-xl p-4 font-medium outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 resize-none text-sm placeholder:text-slate-400" placeholder="What do you love? What could improve?" />
+               </div>
+               <div className="flex gap-3 mt-4">
+                 <button type="button" onClick={() => setShowRatingModal(false)} className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl hover:bg-slate-200 transition-colors">Cancel</button>
+                 <button type="submit" disabled={isSubmittingRating} className="flex-1 py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-md transition-colors disabled:opacity-50">
+                    {isSubmittingRating ? 'Saving...' : 'Submit Rating'}
+                 </button>
+               </div>
+             </form>
+          </div>
+        </div>
+      )}
+
         <main className="flex-1 p-5 sm:p-8 md:p-12 overflow-y-auto w-full max-w-5xl mx-auto">
           {activeTab === 'profile' && <ProfilePage session={session} />}
 
@@ -235,7 +329,16 @@ export default function ResidentDashboard({ session }) {
             </div>
           )}
 
-          {(activeTab === 'dashboard' || activeTab === 'overview') && memberInfo && (
+          {activeTab !== 'profile' && memberInfo && memberInfo.status === 'pending' && (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center space-y-6">
+              <div className="w-24 h-24 bg-amber-50 border border-amber-200 shadow-sm rounded-[2rem] flex items-center justify-center"><Clock size={40} className="text-amber-500 animate-pulse" /></div>
+              <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">Request Pending</h1>
+              <p className="text-slate-500 font-medium">Your request to join the community has been sent to the PG Owner. Waiting for approval.</p>
+              <button onClick={handleLeaveCommunity} className="text-sm font-bold text-red-500 hover:text-red-700 underline underline-offset-4 decoration-red-500/30">Cancel Request</button>
+            </div>
+          )}
+
+          {(activeTab === 'dashboard' || activeTab === 'overview') && memberInfo && memberInfo.status !== 'pending' && (
             <div className="space-y-10 w-full">
               {activeTab === 'dashboard' && <NotificationSystem communityId={memberInfo.community_id} role="resident" />}
               
@@ -248,9 +351,14 @@ export default function ResidentDashboard({ session }) {
                   <p className="text-slate-500 mt-2 font-medium">Room {memberInfo.room_number}</p>
                 </div>
                 {activeTab === 'dashboard' && (
-                  <button onClick={() => setRoomNumber(memberInfo?.room_number || '')} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
-                    Change Room
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setShowRatingModal(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-bold shadow-sm transition-all hover:bg-violet-700">
+                      <Star size={16} /> Rate PG
+                    </button>
+                    <button onClick={() => setRoomNumber(memberInfo?.room_number || '')} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-200 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-all shadow-sm">
+                      Change Room
+                    </button>
+                  </div>
                 )}
               </header>
 
@@ -412,6 +520,24 @@ export default function ResidentDashboard({ session }) {
                                   <span>{issue.status}</span>
                                 </div>
                               </div>
+
+                              {!issue.resident_verified ? (
+                                <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
+                                  <p className="text-xs font-bold text-slate-700">Please verify if this issue was fixed to your satisfaction:</p>
+                                  <div className="flex gap-2">
+                                    <button onClick={() => handleVerifyResolution(issue.id)} className="flex-1 py-2 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200 rounded-lg text-xs font-bold transition-all shadow-sm">
+                                      ✅ Yes, it's fixed
+                                    </button>
+                                    <button onClick={() => handleDisputeResolution(issue.id)} className="flex-1 py-2 bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-bold transition-all shadow-sm">
+                                      ❌ No, reopen issue
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="mt-4 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200 w-max shadow-sm">
+                                  <CheckCircle size={14} /> Verified successfully by you
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}

@@ -74,6 +74,10 @@ export default function LandingPage({ session }) {
             <span className="font-display font-bold text-slate-900 text-xl tracking-tight">EaseStay</span>
           </div>
           <div className="flex items-center gap-4">
+            <button onClick={() => navigate('/communities')}
+              className="hidden sm:block text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors px-4 py-2 rounded-full">
+              Explore PGs
+            </button>
             {isLoggedIn ? (
               <button onClick={() => navigate('/dashboard')}
                 className="flex items-center gap-2 text-sm font-bold bg-slate-900 text-white px-5 py-2.5 rounded-full transition-all hover:bg-slate-800 hover:scale-105 active:scale-95 shadow-[0_4px_14px_0_rgba(0,0,0,0.1)]">

@@ -1,4 +1,4 @@
-import { LogOut,Building, LayoutDashboard, Settings, User, Users, Bell } from 'lucide-react';
+import { LogOut,Building, LayoutDashboard, Settings, User, Users, Bell, Sliders } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 
@@ -20,6 +20,7 @@ export default function Sidebar({ role, activeTab, setActiveTab, notificationCou
     { id: 'residents', label: 'Resident Profiles', icon: Users },
     { id: 'workers', label: 'Technicians', icon: Settings },
     { id: 'community', label: 'Members', icon: User },
+    { id: 'pg_info', label: 'PG Settings', icon: Sliders },
     { id: 'profile', label: 'My Profile', icon: User },
   ];
 

@@ -6,7 +6,7 @@ import NotificationSystem from '../components/NotificationSystem';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
-  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight
+  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders,Building2
 } from 'lucide-react';
 
 // ── Confirmation Modal ──
@@ -95,6 +95,25 @@ export default function OwnerDashboard({ session }) {
   // Notification count
   const [notifCount, setNotifCount] = useState(0);
 
+  // PG Info form state
+  const [commDesc, setCommDesc] = useState('');
+  const [commAddress, setCommAddress] = useState('');
+  const [commFreeRooms, setCommFreeRooms] = useState(0);
+  const [commFeatures, setCommFeatures] = useState('');
+  const [commImages, setCommImages] = useState([]);
+  const [updatingComm, setUpdatingComm] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  useEffect(() => {
+    if (activeCommunity) {
+      setCommDesc(activeCommunity.description || '');
+      setCommAddress(activeCommunity.location_address || '');
+      setCommFreeRooms(activeCommunity.free_rooms || 0);
+      setCommFeatures(activeCommunity.features ? activeCommunity.features.join(', ') : '');
+      setCommImages(activeCommunity.images || []);
+    }
+  }, [activeCommunity]);
+
   useEffect(() => { fetchData(); }, [session]);
 
   const fetchData = async () => {
@@ -160,6 +179,64 @@ export default function OwnerDashboard({ session }) {
     return () => supabase.removeChannel(channel);
   }, [activeCommunity]);
 
+  const handleUpdatePGInfo = async (e) => {
+    e.preventDefault();
+    setUpdatingComm(true);
+    try {
+      const featuresArray = (typeof commFeatures === 'string' ? commFeatures : '').split(',').map(f => f.trim()).filter(f => f);
+      const { error } = await supabase.from('communities').update({
+        description: commDesc,
+        location_address: commAddress,
+        free_rooms: parseInt(commFreeRooms) || 0,
+        features: featuresArray,
+        images: commImages
+      }).eq('id', activeCommunity.id);
+      
+      if (error) throw error;
+      
+      alert("PG Info updated successfully.");
+      setActiveCommunity({
+        ...activeCommunity,
+        description: commDesc,
+        location_address: commAddress,
+        free_rooms: parseInt(commFreeRooms) || 0,
+        features: featuresArray,
+        images: commImages
+      });
+      fetchData();
+    } catch (err) {
+      alert("Error updating PG Info: " + err.message);
+    } finally {
+      setUpdatingComm(false);
+    }
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${activeCommunity.id}/${fileName}`;
+      const { error: uploadError } = await supabase.storage.from('community-images').upload(filePath, file);
+      
+      if (uploadError) {
+        if (uploadError.message.toLowerCase().includes('bucket')) {
+           throw new Error("Bucket 'community-images' not found or permissions denied. Please create it in your Supabase dashboard under Storage and set the policy to Public.");
+        }
+        throw uploadError;
+      }
+      
+      const { data } = supabase.storage.from('community-images').getPublicUrl(filePath);
+      setCommImages(prev => [...prev, data.publicUrl]);
+    } catch (err) {
+      alert("Upload Error: " + err.message);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   const handleCreateCommunity = async (e) => {
     e.preventDefault();
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -213,6 +290,11 @@ export default function OwnerDashboard({ session }) {
     fetchCommunityData(activeCommunity.id);
   }, [activeCommunity]);
 
+  const handleApproveMember = useCallback(async (memberId) => {
+    await supabase.from('members').update({ status: 'active' }).eq('id', memberId);
+    fetchCommunityData(activeCommunity.id);
+  }, [activeCommunity]);
+
   const handleSetRole = useCallback(async (memberId, currentRole) => {
     const newRole = currentRole === 'co_owner' ? 'resident' : 'co_owner';
     const label = newRole === 'co_owner' ? 'Make this member a Co-Owner?' : 'Remove co-owner privileges?';
@@ -221,8 +303,9 @@ export default function OwnerDashboard({ session }) {
     fetchCommunityData(activeCommunity.id);
   }, [activeCommunity]);
 
-  const handleKickMember = useCallback(async (memberId) => {
-    if (!window.confirm('Are you sure you want to kick this member from the community? They will lose all access.')) return;
+  const handleKickMember = useCallback(async (memberId, isPending = false) => {
+    const msg = isPending ? 'Reject this join request?' : 'Are you sure you want to kick this member from the community? They will lose all access.';
+    if (!window.confirm(msg)) return;
     await supabase.from('members').delete().eq('id', memberId);
     fetchCommunityData(activeCommunity.id);
   }, [activeCommunity]);
@@ -312,13 +395,7 @@ export default function OwnerDashboard({ session }) {
                     </button>
                   )}
                 </div>
-                {activeCommunity && (
-                  <div className="bg-white border border-slate-200 px-5 py-3 rounded-2xl shadow-sm w-max">
-                    <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mb-1">Invite Code</p>
-                    <code className="text-2xl font-mono text-primary font-bold tracking-[0.2em]">{activeCommunity.join_code}</code>
-                  </div>
-                )}
-              </div>
+                </div>
               {/* Multi-community switcher */}
               {communities.length > 1 && (
                 <div className="flex flex-wrap gap-2 items-center">
@@ -584,7 +661,12 @@ export default function OwnerDashboard({ session }) {
             {/* ── MEMBERS TAB ── */}
             {activeTab === 'community' && (
               <div className="space-y-6">
-                <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Users size={24} className="text-primary" /> Member Directory</h2>
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Users size={24} className="text-primary" /> Member Directory</h2>
+                  <div className="px-4 py-2.5 bg-white border border-slate-200 shadow-sm rounded-xl text-sm font-bold text-slate-500">
+                    Invite Code: <span className="text-primary tracking-[0.2em] ml-2 font-mono text-lg">{activeCommunity?.join_code}</span>
+                  </div>
+                </div>
                 {members.length === 0 ? (
                   <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">No residents yet.</div>
                 ) : (
@@ -602,6 +684,7 @@ export default function OwnerDashboard({ session }) {
                                 <h3 className="font-bold text-lg text-slate-900 truncate">{member.profiles?.full_name || 'Unknown'}</h3>
                                 {isCoOwner && <span className="flex items-center gap-0.5 text-[9px] font-extrabold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full"><Crown size={9} /> Co-Owner</span>}
                                 {isBanned && <span className="text-[9px] font-extrabold uppercase tracking-wider text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded-full">Banned</span>}
+                                {member.status === 'pending' && <span className="text-[9px] font-extrabold uppercase tracking-wider text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full flex items-center gap-1"><Clock size={9} /> Pending Approval</span>}
                               </div>
                               <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Room {member.room_number}</p>
                               {member.profiles?.phone && <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1"><Phone size={10} />{member.profiles.phone}</p>}
@@ -613,24 +696,100 @@ export default function OwnerDashboard({ session }) {
                               className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-100 transition-all">
                               View Details
                             </button>
-                            <button onClick={() => handleSetRole(member.id, member.community_role)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isCoOwner ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
-                              <Crown size={11} /> {isCoOwner ? 'Remove Co-Owner' : 'Make Co-Owner'}
-                            </button>
-                            <button onClick={() => handleBanMember(member.id, member.status)}
-                              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isBanned ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'}`}>
-                              {isBanned ? <><ShieldOff size={11} /> Unban</> : <><Shield size={11} /> Ban</>}
-                            </button>
-                            <button onClick={() => handleKickMember(member.id)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all ml-auto">
-                              <Trash2 size={11} /> Kick
-                            </button>
+                            
+                            {member.status === 'pending' ? (
+                              <>
+                                <button onClick={() => handleApproveMember(member.id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 transition-all">
+                                  <CheckCircle2 size={11} /> Approve
+                                </button>
+                                <button onClick={() => handleKickMember(member.id, true)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all ml-auto">
+                                  <X size={11} /> Reject
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button onClick={() => handleSetRole(member.id, member.community_role)}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isCoOwner ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'}`}>
+                                  <Crown size={11} /> {isCoOwner ? 'Remove Co-Owner' : 'Make Co-Owner'}
+                                </button>
+                                <button onClick={() => handleBanMember(member.id, member.status)}
+                                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border transition-all ${isBanned ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 border-red-200 text-red-600 hover:bg-red-100'}`}>
+                                  {isBanned ? <><ShieldOff size={11} /> Unban</> : <><Shield size={11} /> Ban</>}
+                                </button>
+                                <button onClick={() => handleKickMember(member.id)}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-red-300 text-red-600 hover:bg-red-600 hover:text-white transition-all ml-auto">
+                                  <Trash2 size={11} /> Kick
+                                </button>
+                              </>
+                            )}
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── PG INFO TAB ── */}
+            {activeTab === 'pg_info' && (
+              <div className="space-y-6">
+                <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Sliders size={24} className="text-primary" /> Edit PG Settings</h2>
+                <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm">
+                  <form onSubmit={handleUpdatePGInfo} className="space-y-5">
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Description</label>
+                      <textarea rows="3" value={commDesc} onChange={e => setCommDesc(e.target.value)} className={inputClass} placeholder="Describe your community..." />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Address</label>
+                        <input type="text" value={commAddress} onChange={e => setCommAddress(e.target.value)} className={inputClass} placeholder="Full Address" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Free Rooms</label>
+                        <input type="number" min="0" value={commFreeRooms} onChange={e => setCommFreeRooms(e.target.value)} className={inputClass} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Facilities / Features (comma separated)</label>
+                      <input type="text" value={commFeatures} onChange={e => setCommFeatures(e.target.value)} className={inputClass} placeholder="e.g. WiFi, AC, Security" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Images ({commImages.length})</label>
+                      <div className="flex flex-wrap gap-3 mb-3">
+                        {commImages.map((img, i) => (
+                          <div key={i} className="relative w-24 h-24 rounded-xl overflow-hidden border border-slate-200 group">
+                            <img src={img} alt="PG" className="w-full h-full object-cover" />
+                            <button type="button" onClick={() => setCommImages(commImages.filter((_, idx) => idx !== i))} className="absolute inset-0 bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all font-bold text-xs"><Trash2 size={16}/></button>
+                          </div>
+                        ))}
+                        <label className="w-24 h-24 rounded-xl border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-400 cursor-pointer hover:border-primary/30 hover:text-primary transition-all">
+                          {uploadingImage ? <div className="animate-spin"><Building size={20}/></div> : <Plus size={20} />}
+                          <span className="text-[10px] font-bold mt-1">Add Image</span>
+                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" disabled={uploadingImage} />
+                        </label>
+                      </div>
+                    </div>
+                    <button type="submit" disabled={updatingComm} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold px-6 py-3 rounded-xl transition-all shadow-sm">
+                      {updatingComm ? 'Saving...' : 'Save PG Information'}
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* ── NEW COMMUNITY TAB ── */}
+            {activeTab === 'new_community' && (
+              <div className="flex flex-col items-center justify-center min-h-[50vh] max-w-md mx-auto text-center space-y-6">
+                <div className="w-24 h-24 bg-white border border-slate-200 shadow-sm rounded-[2rem] flex items-center justify-center"><Building2 size={40} className="text-primary" /></div>
+                <h2 className="text-3xl font-extrabold text-slate-900">Create a New PG</h2>
+                <form onSubmit={handleCreateCommunity} className="w-full space-y-4">
+                  <input type="text" placeholder="PG Name" required value={newCommunityName} onChange={e => setNewCommunityName(e.target.value)} className={inputClass + ' text-center text-xl'} />
+                  <button type="submit" className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold p-4 rounded-2xl transition-all shadow-[0_4px_14px_0_rgba(0,0,0,0.1)]">Create Community</button>
+                </form>
               </div>
             )}
           </div>

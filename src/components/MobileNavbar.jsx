@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Menu, X, Bell } from 'lucide-react';
+import { Menu, X, Bell, Home, Building2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useNavigate } from 'react-router-dom';
 
 export default function MobileNavbar({ role, activeTab, setActiveTab, notificationCount = 0 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -22,6 +24,7 @@ export default function MobileNavbar({ role, activeTab, setActiveTab, notificati
     { id: 'residents', label: 'Resident Profiles' },
     { id: 'workers', label: 'Technicians' },
     { id: 'community', label: 'Members' },
+    { id: 'pg_info', label: 'PG Settings' },
     { id: 'profile', label: 'My Profile' },
   ];
 
@@ -66,6 +69,15 @@ export default function MobileNavbar({ role, activeTab, setActiveTab, notificati
               {item.label}
             </button>
           ))}
+          <div className="h-px bg-slate-100 my-2" />
+          <button onClick={() => { navigate('/'); setIsOpen(false); }}
+            className="text-left px-4 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50 border border-transparent transition-all flex items-center gap-2">
+            <Home size={16} /> Home
+          </button>
+          <button onClick={() => { navigate('/communities'); setIsOpen(false); }}
+            className="text-left px-4 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-50 border border-transparent transition-all flex items-center gap-2">
+            <Building2 size={16} /> Explore PGs
+          </button>
           <div className="h-px bg-slate-100 my-2" />
           <button
             onClick={handleSignOut}

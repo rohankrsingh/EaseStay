@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import PublicNavbar from '../components/PublicNavbar';
 import { 
   Building2, Star, MapPin, CheckCircle2, ChevronLeft, ChevronRight, 
-  Wifi, ShieldCheck, Shirt, Utensils, Waves, Car, SplitSquareHorizontal, Info, MessageSquare
+  Wifi, ShieldCheck, Shirt, Utensils, Waves, Car, SplitSquareHorizontal, Info, MessageSquare, Phone, Mail, X
 } from 'lucide-react';
 
 const FALLBACK_IMAGES = [
@@ -45,15 +45,26 @@ export default function CommunityDetailPage() {
   const navigate = useNavigate();
   const [com, setCom] = useState(null);
   const [reviews, setReviews] = useState([]);
+  const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
+
+  // Join request state
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [roomNumber, setRoomNumber] = useState('');
+  const [joinStatus, setJoinStatus] = useState(null); // null | 'pending' | 'active' | 'sending'
+  const [joinError, setJoinError] = useState('');
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+  }, []);
 
   useEffect(() => {
     async function fetchAll() {
       const [{ data: community }, { data: reviewData }] = await Promise.all([
         supabase
           .from('communities')
-          .select('*, profiles:owner_id(full_name, phone)')
+          .select('*, profiles:owner_id(full_name, phone, email: id)')
           .eq('id', id)
           .maybeSingle(),
         supabase
@@ -65,6 +76,19 @@ export default function CommunityDetailPage() {
 
       if (community) setCom(community);
       setReviews(reviewData || []);
+
+      // Check if current user already has a membership
+      const { data: { session: s } } = await supabase.auth.getSession();
+      if (s) {
+        const { data: mem } = await supabase
+          .from('members')
+          .select('status')
+          .eq('user_id', s.user.id)
+          .eq('community_id', id)
+          .maybeSingle();
+        if (mem) setJoinStatus(mem.status);
+      }
+
       setLoading(false);
     }
     fetchAll();
@@ -98,9 +122,60 @@ export default function CommunityDetailPage() {
   const nextImage = () => setActiveImage((prev) => (prev + 1) % images.length);
   const prevImage = () => setActiveImage((prev) => (prev - 1 + images.length) % images.length);
 
+  const handleJoinRequest = async (e) => {
+    e.preventDefault();
+    if (!session) { navigate('/auth'); return; }
+    setJoinStatus('sending');
+    setJoinError('');
+    try {
+      const { error } = await supabase.from('members').insert({
+        user_id: session.user.id,
+        community_id: id,
+        room_number: roomNumber || 'TBD',
+        status: 'pending',
+      });
+      if (error) throw error;
+      setJoinStatus('pending');
+      setShowJoinModal(false);
+    } catch (err) {
+      setJoinError(err.message.includes('unique') ? 'You already have a pending or active membership for this PG.' : err.message);
+      setJoinStatus(null);
+    }
+  };
+
+  const joinButtonLabel = () => {
+    if (joinStatus === 'pending') return '⏳ Request Pending';
+    if (joinStatus === 'active') return '✅ Already a Member';
+    if (joinStatus === 'sending') return 'Sending...';
+    return 'Request to Join';
+  };
+
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-violet-200 pb-24">
       <PublicNavbar />
+
+      {/* Join Request Modal */}
+      {showJoinModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl relative">
+            <button onClick={() => setShowJoinModal(false)} className="absolute top-4 right-4 p-2 rounded-xl hover:bg-slate-100"><X size={18} /></button>
+            <h2 className="text-2xl font-black text-slate-900 mb-1">Join {com.name}</h2>
+            <p className="text-slate-500 text-sm mb-6">Your request will be sent to the owner for approval.</p>
+            <form onSubmit={handleJoinRequest} className="space-y-4">
+              <div>
+                <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Room Number (optional)</label>
+                <input type="text" value={roomNumber} onChange={e => setRoomNumber(e.target.value)}
+                  placeholder="e.g. 101 or TBD"
+                  className="w-full border border-slate-200 bg-slate-50 rounded-xl px-4 py-3 font-medium text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 transition placeholder:text-slate-400" />
+              </div>
+              {joinError && <p className="text-red-600 text-sm font-semibold">{joinError}</p>}
+              <button type="submit" className="w-full py-3 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl transition-colors shadow-md">
+                Send Request
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-28">
         {/* Title Section */}
@@ -124,8 +199,16 @@ export default function CommunityDetailPage() {
             </p>
           </div>
           <div className="flex shrink-0 gap-3">
-             <button onClick={() => navigate('/auth')} className="bg-violet-600 hover:bg-violet-700 text-white font-bold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5 active:scale-95 text-lg">
-               Request to Join
+             <button
+               onClick={() => joinStatus ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
+               disabled={joinStatus === 'pending' || joinStatus === 'active' || joinStatus === 'sending'}
+               className={`font-bold py-3 px-8 rounded-full shadow-lg text-lg transition-all hover:-translate-y-0.5 active:scale-95 ${
+                 joinStatus === 'pending' ? 'bg-amber-100 text-amber-700 cursor-not-allowed shadow-none' :
+                 joinStatus === 'active' ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed shadow-none' :
+                 'bg-violet-600 hover:bg-violet-700 text-white hover:shadow-xl'
+               }`}
+             >
+               {joinButtonLabel()}
              </button>
           </div>
         </div>
@@ -265,8 +348,29 @@ export default function CommunityDetailPage() {
               </div>
               <h3 className="font-bold text-slate-900 text-lg mb-1">{com.profiles?.full_name || 'Verified Owner'}</h3>
               <p className="text-slate-500 text-sm font-medium mb-4">Property Manager • EaseStay Verified</p>
-              <button disabled className="w-full py-2.5 border-2 border-slate-200 text-slate-400 font-bold rounded-xl cursor-not-allowed">
-                Contact hidden (Join First)
+
+              <div className="space-y-2 mb-5">
+                {com.profiles?.phone && (
+                  <a href={`tel:${com.profiles.phone}`}
+                    className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-700 font-semibold text-sm hover:bg-slate-100 transition-colors">
+                    <Phone size={15} className="text-violet-500" /> {com.profiles.phone}
+                  </a>
+                )}
+                {!com.profiles?.phone && (
+                  <p className="text-xs text-slate-400 font-medium">No contact info provided by owner</p>
+                )}
+              </div>
+
+              <button
+                onClick={() => joinStatus ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
+                disabled={joinStatus === 'pending' || joinStatus === 'active'}
+                className={`w-full py-2.5 font-bold rounded-xl transition-colors text-sm ${
+                  joinStatus === 'pending' ? 'bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed' :
+                  joinStatus === 'active' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-not-allowed' :
+                  'bg-violet-600 hover:bg-violet-700 text-white shadow-sm'
+                }`}
+              >
+                {joinButtonLabel()}
               </button>
             </div>
 

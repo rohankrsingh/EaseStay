@@ -52,7 +52,7 @@ export default function CommunityDetailPage() {
   // Join request state
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [roomNumber, setRoomNumber] = useState('');
-  const [joinStatus, setJoinStatus] = useState(null); // null | 'pending' | 'active' | 'sending'
+  const [joinStatus, setJoinStatus] = useState(null); // null | 'pending' | 'active' | 'banned' | 'sending'
   const [joinError, setJoinError] = useState('');
 
   useEffect(() => {
@@ -77,7 +77,8 @@ export default function CommunityDetailPage() {
       if (community) setCom(community);
       setReviews(reviewData || []);
 
-      // Check if current user already has a membership
+      // Check if current user already has a membership for this community.
+      // A prior 'left' record should not block rejoining.
       const { data: { session: s } } = await supabase.auth.getSession();
       if (s) {
         const { data: mem } = await supabase
@@ -86,7 +87,11 @@ export default function CommunityDetailPage() {
           .eq('user_id', s.user.id)
           .eq('community_id', id)
           .maybeSingle();
-        if (mem) setJoinStatus(mem.status);
+        if (mem?.status && ['pending', 'active', 'banned'].includes(mem.status)) {
+          setJoinStatus(mem.status);
+        } else {
+          setJoinStatus(null);
+        }
       }
 
       setLoading(false);
@@ -128,11 +133,14 @@ export default function CommunityDetailPage() {
     setJoinStatus('sending');
     setJoinError('');
     try {
-      const { error } = await supabase.from('members').insert({
+      const { error } = await supabase.from('members').upsert({
         user_id: session.user.id,
         community_id: id,
         room_number: roomNumber || 'TBD',
         status: 'pending',
+        joined_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id,community_id'
       });
       if (error) throw error;
       setJoinStatus('pending');
@@ -146,9 +154,12 @@ export default function CommunityDetailPage() {
   const joinButtonLabel = () => {
     if (joinStatus === 'pending') return '⏳ Request Pending';
     if (joinStatus === 'active') return '✅ Already a Member';
+    if (joinStatus === 'banned') return '🚫 Access Blocked';
     if (joinStatus === 'sending') return 'Sending...';
     return 'Request to Join';
   };
+
+  const isJoinBlocked = ['pending', 'active', 'banned', 'sending'].includes(joinStatus);
 
   return (
     <div className="min-h-screen bg-white font-sans selection:bg-violet-200 pb-24">
@@ -200,11 +211,12 @@ export default function CommunityDetailPage() {
           </div>
           <div className="flex shrink-0 gap-3">
              <button
-               onClick={() => joinStatus ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
-               disabled={joinStatus === 'pending' || joinStatus === 'active' || joinStatus === 'sending'}
+               onClick={() => isJoinBlocked ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
+               disabled={isJoinBlocked}
                className={`font-bold py-3 px-8 rounded-full shadow-lg text-lg transition-all hover:-translate-y-0.5 active:scale-95 ${
                  joinStatus === 'pending' ? 'bg-amber-100 text-amber-700 cursor-not-allowed shadow-none' :
                  joinStatus === 'active' ? 'bg-emerald-100 text-emerald-700 cursor-not-allowed shadow-none' :
+                 joinStatus === 'banned' ? 'bg-rose-100 text-rose-700 cursor-not-allowed shadow-none' :
                  'bg-violet-600 hover:bg-violet-700 text-white hover:shadow-xl'
                }`}
              >
@@ -362,11 +374,12 @@ export default function CommunityDetailPage() {
               </div>
 
               <button
-                onClick={() => joinStatus ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
-                disabled={joinStatus === 'pending' || joinStatus === 'active'}
+                onClick={() => isJoinBlocked ? null : (session ? setShowJoinModal(true) : navigate('/auth'))}
+                disabled={isJoinBlocked}
                 className={`w-full py-2.5 font-bold rounded-xl transition-colors text-sm ${
                   joinStatus === 'pending' ? 'bg-amber-50 border border-amber-200 text-amber-700 cursor-not-allowed' :
                   joinStatus === 'active' ? 'bg-emerald-50 border border-emerald-200 text-emerald-700 cursor-not-allowed' :
+                  joinStatus === 'banned' ? 'bg-rose-50 border border-rose-200 text-rose-700 cursor-not-allowed' :
                   'bg-violet-600 hover:bg-violet-700 text-white shadow-sm'
                 }`}
               >

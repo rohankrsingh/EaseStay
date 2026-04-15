@@ -34,14 +34,150 @@ CREATE TABLE IF NOT EXISTS public.reviews (
 
 -- Community Metrics View for Rating Calculation
 CREATE OR REPLACE VIEW public.community_metrics AS
-SELECT 
-  c.id as community_id,
-  (SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (i.updated_at - i.created_at))/3600), 0) FROM issues i WHERE i.community_id = c.id AND i.status = 'Resolved') as avg_resolution_hours,
-  (SELECT COUNT(*) FROM issues i WHERE i.community_id = c.id AND i.status = 'Resolved') as issues_resolved,
-  (SELECT COUNT(*) FROM members m WHERE m.community_id = c.id AND m.status = 'active') + COALESCE(c.free_rooms, 0) as scale,
-  (SELECT COALESCE(AVG(rating), 0) FROM reviews r WHERE r.community_id = c.id) as resident_rating,
-  (SELECT COUNT(*) FROM reviews r WHERE r.community_id = c.id) as total_reviews
-FROM communities c;
+WITH issue_stats AS (
+  SELECT
+    i.community_id,
+    COUNT(*) AS issues_resolved,
+    COALESCE(AVG(EXTRACT(EPOCH FROM (i.updated_at - i.created_at)) / 3600.0), 0)::numeric AS avg_resolution_hours
+  FROM public.issues i
+  WHERE i.status = 'Resolved'
+  GROUP BY i.community_id
+),
+review_stats AS (
+  SELECT
+    r.community_id,
+    COUNT(*) AS total_reviews,
+    COALESCE(AVG(r.rating), 0)::numeric AS resident_rating
+  FROM public.reviews r
+  GROUP BY r.community_id
+),
+member_stats AS (
+  SELECT
+    m.community_id,
+    COUNT(*) AS active_members
+  FROM public.members m
+  WHERE m.status = 'active'
+  GROUP BY m.community_id
+),
+global_stats AS (
+  SELECT COALESCE(AVG(r.rating), 3.8)::numeric AS global_avg_rating
+  FROM public.reviews r
+)
+SELECT
+  c.id AS community_id,
+  COALESCE(i.avg_resolution_hours, 0) AS avg_resolution_hours,
+  COALESCE(i.issues_resolved, 0) AS issues_resolved,
+  COALESCE(ms.active_members, 0) + COALESCE(c.free_rooms, 0) AS scale,
+  COALESCE(rs.resident_rating, 0) AS resident_rating,
+  COALESCE(rs.total_reviews, 0) AS total_reviews,
+  CASE
+    WHEN COALESCE(rs.total_reviews, 0) = 0 THEN LEAST(
+      3.0::numeric,
+      LEAST(
+        5::numeric,
+        GREATEST(
+          1::numeric,
+          (
+            (
+              (
+                (
+                  (COALESCE(rs.total_reviews, 0)::numeric / (COALESCE(rs.total_reviews, 0)::numeric + 10::numeric))
+                  * COALESCE(NULLIF(rs.resident_rating, 0), g.global_avg_rating)
+                )
+                +
+                (
+                  (10::numeric / (COALESCE(rs.total_reviews, 0)::numeric + 10::numeric))
+                  * g.global_avg_rating
+                )
+              ) * 0.35
+            )
+            +
+            (
+              (
+                (
+                  (
+                    (
+                      (
+                        CASE
+                          WHEN COALESCE(i.issues_resolved, 0) > 0
+                            THEN LEAST(5::numeric, GREATEST(0::numeric, 5::numeric - (COALESCE(i.avg_resolution_hours, 0) / 16::numeric)))
+                          ELSE 2.5::numeric
+                        END
+                      ) * 0.25
+                    )
+                    +
+                    (
+                      LEAST(5::numeric, 1.2::numeric + (LN(1::numeric + COALESCE(i.issues_resolved, 0)::numeric) * 1.15::numeric)) * 0.75
+                    )
+                  )
+                  * LEAST(1::numeric, COALESCE(i.issues_resolved, 0)::numeric / 40::numeric)
+                )
+                +
+                (
+                  g.global_avg_rating * (1::numeric - LEAST(1::numeric, COALESCE(i.issues_resolved, 0)::numeric / 40::numeric))
+                )
+              ) * 0.65
+            )
+          )
+        )
+      )
+    )
+    ELSE LEAST(
+      5::numeric,
+      GREATEST(
+        1::numeric,
+        (
+          (
+            (
+              (
+                (COALESCE(rs.total_reviews, 0)::numeric / (COALESCE(rs.total_reviews, 0)::numeric + 10::numeric))
+                * COALESCE(NULLIF(rs.resident_rating, 0), g.global_avg_rating)
+              )
+              +
+              (
+                (10::numeric / (COALESCE(rs.total_reviews, 0)::numeric + 10::numeric))
+                * g.global_avg_rating
+              )
+            ) * 0.35
+          )
+          +
+          (
+            (
+              (
+                (
+                  (
+                    (
+                      (
+                        CASE
+                          WHEN COALESCE(i.issues_resolved, 0) > 0
+                            THEN LEAST2.8(5::numeric, GREATEST(0::numeric, 5::numeric - (COALESCE(i.avg_resolution_hours, 0) / 16::numeric)))
+                          ELSE 2.5::numeric
+                        END
+                      ) * 0.25
+                    )
+                    +
+                    (
+                      LEAST(5::numeric, 1.2::numeric + (LN(1::numeric + COALESCE(i.issues_resolved, 0)::numeric) * 1.15::numeric)) * 0.75
+                    )
+                  )
+                  * LEAST(1::numeric, COALESCE(i.issues_resolved, 0)::numeric / 40::numeric)
+                )
+                +
+                (
+                  g.global_avg_rating * (1::numeric - LEAST(1::numeric, COALESCE(i.issues_resolved, 0)::numeric / 40::numeric))
+                )
+              ) * 0.65
+            )
+          )
+        )
+      )
+    )
+  END AS weighted_rating
+FROM public.communities c
+LEFT JOIN issue_stats i ON i.community_id = c.id
+LEFT JOIN review_stats rs ON rs.community_id = c.id
+LEFT JOIN member_stats ms ON ms.community_id = c.id
+CROSS JOIN global_stats g;
 
 -- ─────────────────────────────────────────────────────────
 -- ENABLE ROW LEVEL SECURITY
@@ -67,7 +203,21 @@ CREATE POLICY "Reviews: resident can update own"
   ON public.reviews FOR UPDATE
   USING (auth.uid() = resident_id)
   WITH CHECK (auth.uid() = resident_id);
-
+CREATE OR REPLACE VIEW public.community_metrics AS
+WITH issue_stats AS (
+  SELECT
+    i.community_id,
+    COUNT(*)::numeric AS issues_resolved,
+    COALESCE(AVG(EXTRACT(EPOCH FROM (i.updated_at - i.created_at)) / 3600.0), 0)::numeric AS avg_resolution_hours
+  FROM public.issues i
+  WHERE i.status = 'Resolved'
+  GROUP BY i.community_id
+),
+…FROM public.communities c
+LEFT JOIN issue_stats i ON i.community_id = c.id
+LEFT JOIN review_stats rs ON rs.community_id = c.id
+LEFT JOIN member_stats ms ON ms.community_id = c.id
+CROSS JOIN global_stats g;
 -- ─────────────────────────────────────────────────────────
 -- COMMUNITIES TABLE POLICIES
 -- ─────────────────────────────────────────────────────────
@@ -129,4 +279,67 @@ CREATE POLICY "Storage: authenticated delete"
   ON storage.objects FOR DELETE
   TO authenticated
   USING (bucket_id = 'community-images');
+
+-- ─────────────────────────────────────────────────────────
+-- ROOM HISTORY + MEMBERSHIP UPDATE POLICIES
+-- ─────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.room_history (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid REFERENCES public.profiles(id) ON DELETE CASCADE NOT NULL,
+  community_id uuid REFERENCES public.communities(id) ON DELETE CASCADE NOT NULL,
+  room_number text NOT NULL,
+  change_type text NOT NULL DEFAULT 'changed' CHECK (change_type IN ('joined', 'changed', 'left', 'recorded')),
+  changed_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_room_history_user_changed_at
+  ON public.room_history (user_id, changed_at DESC);
+
+ALTER TABLE public.room_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Room history: resident read own" ON public.room_history;
+CREATE POLICY "Room history: resident read own"
+  ON public.room_history FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Room history: resident insert own" ON public.room_history;
+CREATE POLICY "Room history: resident insert own"
+  ON public.room_history FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Members: resident update own membership" ON public.members;
+CREATE POLICY "Members: resident update own membership"
+  ON public.members FOR UPDATE
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Members: owner update community members" ON public.members;
+CREATE POLICY "Members: owner update community members"
+  ON public.members FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.communities c
+      WHERE c.id = community_id AND c.owner_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.communities c
+      WHERE c.id = community_id AND c.owner_id = auth.uid()
+    )
+  );
+
+DROP POLICY IF EXISTS "Members: owner delete community members" ON public.members;
+CREATE POLICY "Members: owner delete community members"
+  ON public.members FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.communities c
+      WHERE c.id = community_id AND c.owner_id = auth.uid()
+    )
+  );
 

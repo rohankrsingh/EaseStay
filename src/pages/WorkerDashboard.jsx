@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
+import { DashboardTrendChart, DashboardStatusChart } from '../components/dashboard-visuals';
 import { Wrench, CheckCircle, Clock, AlertTriangle, Plus, Building2, ChevronDown, Video, Phone, Mail, X } from 'lucide-react';
 // Shared Jitsi room link per issue ID
 function VideoCallButton({ issueId, issueTitle, compact = false }) {
@@ -143,6 +144,35 @@ export default function WorkerDashboard({ session }) {
   };
 
   const workerRoleEmoji = { plumber: '🔧', electrician: '⚡', cleaner: '🧹', maintenance: '🔨' };
+  const taskSummary = {
+    pending: assignedIssues.filter(i => i.status === 'Pending').length,
+    progress: assignedIssues.filter(i => i.status === 'In Progress').length,
+    resolved: assignedIssues.filter(i => i.status === 'Resolved').length,
+  };
+
+  const workerTrend = (() => {
+    const days = 7;
+    const reference = new Date();
+    reference.setHours(0, 0, 0, 0);
+    const buckets = Array.from({ length: days }, (_, index) => {
+      const date = new Date(reference);
+      date.setDate(reference.getDate() - (days - 1 - index));
+      const key = date.toISOString().slice(0, 10);
+      return { key, dateLabel: date.toLocaleDateString(undefined, { weekday: 'short' }), value: 0 };
+    });
+    const bucketMap = new Map(buckets.map((item) => [item.key, item]));
+    assignedIssues.forEach((issue) => {
+      const key = new Date(issue.created_at).toISOString().slice(0, 10);
+      if (bucketMap.has(key)) bucketMap.get(key).value += 1;
+    });
+    return buckets;
+  })();
+
+  const workerStatusChart = [
+    { name: 'Pending', value: taskSummary.pending, color: '#f59e0b' },
+    { name: 'In Progress', value: taskSummary.progress, color: '#3b82f6' },
+    { name: 'Resolved', value: taskSummary.resolved, color: '#10b981' },
+  ].filter((item) => item.value > 0);
 
   return (
     <DashboardLayout profile={profile} role="worker" title="Technician Dashboard" activeTab={activeTab} setActiveTab={setActiveTab}>
@@ -187,6 +217,41 @@ export default function WorkerDashboard({ session }) {
                 <span className="ml-auto text-xs font-bold bg-slate-100 px-2.5 py-1 rounded-full text-slate-500">{assignedIssues.length} tasks</span>
               </div>
             )}
+
+            {myCommunities.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Pending</p>
+                  <p className="mt-1 text-2xl font-black text-amber-900">{taskSummary.pending}</p>
+                </div>
+                <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700">In Progress</p>
+                  <p className="mt-1 text-2xl font-black text-blue-900">{taskSummary.progress}</p>
+                </div>
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700">Resolved</p>
+                  <p className="mt-1 text-2xl font-black text-emerald-900">{taskSummary.resolved}</p>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              <DashboardTrendChart
+                title="Workload Trend"
+                subtitle="Assigned issues over the last 7 days"
+                data={workerTrend}
+                dataKey="value"
+                nameKey="dateLabel"
+                color="#60a5fa"
+                tone="blue"
+              />
+              <DashboardStatusChart
+                title="Task Status"
+                subtitle="How your current queue is distributed"
+                data={workerStatusChart}
+                tone="emerald"
+              />
+            </div>
 
             {/* Tasks */}
             {loading && <p className="text-slate-400 font-medium text-center py-8">Loading your tasks...</p>}

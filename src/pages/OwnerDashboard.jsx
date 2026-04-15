@@ -3,16 +3,17 @@ import { supabase } from '../lib/supabase';
 import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
+import { DashboardTrendChart, DashboardStatusChart, DashboardBarChart } from '../components/dashboard-visuals';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
-  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders,Building2
+  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders, Building2, ArrowUpDown
 } from 'lucide-react';
 
 // ── Confirmation Modal ──
 function ConfirmModal({ title, message, onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={onCancel}>
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-60 flex items-center justify-center p-4" onClick={onCancel}>
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-7 w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-extrabold text-slate-900 mb-2">{title}</h3>
         <p className="text-slate-500 text-sm font-medium mb-6">{message}</p>
@@ -28,8 +29,8 @@ function ConfirmModal({ title, message, onConfirm, onCancel }) {
 // ── Emergency Alert Modal ──
 function EmergencyAlert({ issue, onDismiss }) {
   return (
-    <div className="fixed inset-0 bg-red-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2rem] border-2 border-red-500 shadow-2xl p-8 w-full max-w-md text-center relative overflow-hidden">
+    <div className="fixed inset-0 bg-red-900/60 backdrop-blur-sm z-70 flex items-center justify-center p-4">
+      <div className="bg-white rounded-4xl border-2 border-red-500 shadow-2xl p-8 w-full max-w-md text-center relative overflow-hidden">
         <div className="absolute top-0 left-0 right-0 h-2 bg-red-500 animate-pulse" />
         <div className="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
           <AlertCircle size={40} className="text-red-600 animate-pulse" />
@@ -91,6 +92,7 @@ export default function OwnerDashboard({ session }) {
   const [filterCategory, setFilterCategory] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSearch, setFilterSearch] = useState('');
+  const [filterTime, setFilterTime] = useState('recent');
 
   // Notification count
   const [notifCount, setNotifCount] = useState(0);
@@ -138,15 +140,13 @@ export default function OwnerDashboard({ session }) {
   };
 
   const fetchCommunityData = async (commId) => {
-    const priorityWeights = { Critical: 4, High: 3, Medium: 2, Low: 1 };
     const { data: issuesData } = await supabase.from('issues')
       .select('*, profiles(full_name), workers(id, name, role, phone, email)')
       .eq('community_id', commId).order('created_at', { ascending: false });
-    const sorted = (issuesData || []).sort((a, b) => priorityWeights[b.priority] - priorityWeights[a.priority]);
-    setIssues(sorted);
+    setIssues(issuesData || []);
 
     const { data: memsData } = await supabase.from('members')
-      .select('*, profiles(id, full_name, phone, bio, role, created_at)').eq('community_id', commId);
+      .select('*, profiles(id, full_name, phone, bio, role, created_at)').eq('community_id', commId).neq('status', 'left');
     setMembers(memsData || []);
 
     const { data: workersData } = await supabase.from('workers').select('*').eq('community_id', commId);
@@ -318,7 +318,17 @@ export default function OwnerDashboard({ session }) {
     if (filterSearch && !issue.title.toLowerCase().includes(filterSearch.toLowerCase()) &&
         !issue.description?.toLowerCase().includes(filterSearch.toLowerCase())) return false;
     return true;
+  }).sort((a, b) => {
+    const aTime = new Date(a.created_at).getTime();
+    const bTime = new Date(b.created_at).getTime();
+    return filterTime === 'oldest' ? aTime - bTime : bTime - aTime;
   });
+
+  const issueCounters = {
+    pending: issues.filter(i => i.status === 'Pending').length,
+    progress: issues.filter(i => i.status === 'In Progress').length,
+    resolved: issues.filter(i => i.status === 'Resolved').length,
+  };
 
   // Issues grouped by member for residents tab
   const issuesByMember = members.map(member => ({
@@ -342,6 +352,60 @@ export default function OwnerDashboard({ session }) {
 
   const categories = [...new Set(issues.map(i => i.category))];
 
+  const ownerIssueTrend = (() => {
+    const days = 7;
+    const reference = new Date();
+    reference.setHours(0, 0, 0, 0);
+    const toLocalDayKey = (date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const buckets = Array.from({ length: days }, (_, index) => {
+      const date = new Date(reference);
+      date.setDate(reference.getDate() - (days - 1 - index));
+      const key = toLocalDayKey(date);
+      return { key, dateLabel: date.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }), value: 0 };
+    });
+    const bucketMap = new Map(buckets.map((item) => [item.key, item]));
+    issues.forEach((issue) => {
+      const key = toLocalDayKey(new Date(issue.created_at));
+      if (bucketMap.has(key)) bucketMap.get(key).value += 1;
+    });
+    return buckets;
+  })();
+
+  const ownerStatusChart = [
+    { name: 'Pending', value: issues.filter(i => i.status === 'Pending').length, color: '#f59e0b' },
+    { name: 'In Progress', value: issues.filter(i => i.status === 'In Progress').length, color: '#3b82f6' },
+    { name: 'Resolved', value: issues.filter(i => i.status === 'Resolved').length, color: '#10b981' },
+  ].filter((item) => item.value > 0);
+
+  const ownerCategoryChart = categories.slice(0, 6).map((category) => ({
+    name: category,
+    value: issues.filter((issue) => issue.category === category).length,
+  })).sort((a, b) => b.value - a.value);
+
+  const getIssueAgeHours = (issue) => Math.max(0, (Date.now() - new Date(issue.created_at).getTime()) / (1000 * 60 * 60));
+  const overdueIssues = issues.filter((issue) => issue.status !== 'Resolved' && getIssueAgeHours(issue) >= 24);
+  const averageOpenAgeHours = (() => {
+    const openIssues = issues.filter((issue) => issue.status !== 'Resolved');
+    if (openIssues.length === 0) return 0;
+    return openIssues.reduce((sum, issue) => sum + getIssueAgeHours(issue), 0) / openIssues.length;
+  })();
+  const issueAgeChart = [
+    { name: '< 24h', value: issues.filter((issue) => issue.status !== 'Resolved' && getIssueAgeHours(issue) < 24).length, color: '#10b981' },
+    { name: '1-3d', value: issues.filter((issue) => issue.status !== 'Resolved' && getIssueAgeHours(issue) >= 24 && getIssueAgeHours(issue) < 72).length, color: '#3b82f6' },
+    { name: '3-7d', value: issues.filter((issue) => issue.status !== 'Resolved' && getIssueAgeHours(issue) >= 72 && getIssueAgeHours(issue) < 168).length, color: '#f59e0b' },
+    { name: '7d+', value: issues.filter((issue) => issue.status !== 'Resolved' && getIssueAgeHours(issue) >= 168).length, color: '#ef4444' },
+  ].filter((item) => item.value > 0);
+  const issueAttentionCards = [
+    { label: 'Open > 24h', value: overdueIssues.length, tone: 'amber' },
+    { label: 'Avg Open Age', value: `${averageOpenAgeHours.toFixed(1)}h`, tone: 'blue' },
+    { label: 'Open Critical', value: issues.filter((issue) => issue.status !== 'Resolved' && issue.priority === 'Critical').length, tone: 'emerald' },
+  ];
+
   return (
     <DashboardLayout profile={profile} role="owner" title="Owner Dashboard" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }}>
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
@@ -351,7 +415,7 @@ export default function OwnerDashboard({ session }) {
       {/* Member detail modal */}
       {selectedMember && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setSelectedMember(null)}>
-          <div className="bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 w-full max-w-md relative" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-4xl border border-slate-200 shadow-2xl p-8 w-full max-w-md relative" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedMember(null)} className="absolute top-5 right-5 p-2 rounded-xl hover:bg-slate-100 text-slate-500"><X size={20} /></button>
             <div className="flex items-center gap-5 mb-6">
               <div className="w-16 h-16 rounded-2xl bg-primary/10 text-primary flex items-center justify-center font-extrabold text-2xl">{selectedMember.room_number}</div>
@@ -373,7 +437,7 @@ export default function OwnerDashboard({ session }) {
 
         {activeTab !== 'profile' && !activeCommunity && communities.length === 0 && (
           <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-md mx-auto text-center space-y-6">
-            <div className="w-24 h-24 bg-white border border-slate-200 shadow-sm rounded-[2rem] flex items-center justify-center"><Building size={40} className="text-primary" /></div>
+            <div className="w-24 h-24 bg-white border border-slate-200 shadow-sm rounded-4xl flex items-center justify-center"><Building size={40} className="text-primary" /></div>
             <h1 className="text-3xl font-extrabold text-slate-900">Create your first PG Community</h1>
             <form onSubmit={handleCreateCommunity} className="w-full space-y-4">
               <input type="text" placeholder="PG Name" required value={newCommunityName} onChange={e => setNewCommunityName(e.target.value)} className={inputClass + ' text-center text-xl'} />
@@ -426,8 +490,8 @@ export default function OwnerDashboard({ session }) {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                   {communities.map(com => (
                     <div key={com.id} onClick={() => { setActiveCommunity(com); fetchCommunityData(com.id); setActiveTab('issues'); }}
-                      className="group cursor-pointer bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 transition-all overflow-hidden relative">
-                      <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary/10 to-transparent rounded-bl-[100px] z-0" />
+                      className="group cursor-pointer bg-white border border-slate-200 rounded-4xl p-6 shadow-sm hover:shadow-xl hover:border-primary/30 hover:-translate-y-1 transition-all overflow-hidden relative">
+                      <div className="absolute top-0 right-0 w-32 h-32 bg-linear-to-br from-primary/10 to-transparent rounded-bl-[100px] z-0" />
                       <div className="relative z-10 flex flex-col h-full">
                         <div className="w-14 h-14 bg-primary/10 text-primary flex items-center justify-center rounded-2xl mb-4 shrink-0 group-hover:scale-110 group-hover:bg-primary group-hover:text-white transition-all">
                           <Building size={28} strokeWidth={2.5} />
@@ -455,10 +519,74 @@ export default function OwnerDashboard({ session }) {
                   <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">{filteredIssues.length} / {issues.length}</span>
                 </div>
 
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+                  <div className="xl:col-span-2">
+                    <DashboardTrendChart
+                      title="Issue Intake"
+                      subtitle="New issues raised over the last 7 days"
+                      data={ownerIssueTrend}
+                      dataKey="value"
+                      nameKey="dateLabel"
+                      color="#f97316"
+                      tone="amber"
+                    />
+                  </div>
+                  <DashboardStatusChart
+                    title="Status Mix"
+                    subtitle="How your issue queue is distributed"
+                    data={ownerStatusChart}
+                    tone="slate"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {issueAttentionCards.map((card) => (
+                    <div key={card.label} className={`rounded-2xl border p-4 ${card.tone === 'amber' ? 'border-amber-200 bg-amber-50/80' : card.tone === 'blue' ? 'border-blue-200 bg-blue-50/80' : 'border-emerald-200 bg-emerald-50/80'}`}>
+                      <p className={`text-[11px] font-extrabold uppercase tracking-wider ${card.tone === 'amber' ? 'text-amber-700' : card.tone === 'blue' ? 'text-blue-700' : 'text-emerald-700'}`}>{card.label}</p>
+                      <p className={`mt-1 text-2xl font-black ${card.tone === 'amber' ? 'text-amber-900' : card.tone === 'blue' ? 'text-blue-900' : 'text-emerald-900'}`}>{card.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {issueAgeChart.length > 0 && (
+                  <DashboardBarChart
+                    title="Issue Aging"
+                    subtitle="Open issues grouped by how long they have been pending"
+                    data={issueAgeChart}
+                    xKey="name"
+                    dataKey="value"
+                    tone="amber"
+                  />
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4">
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-amber-700">Pending</p>
+                    <p className="mt-1 text-2xl font-black text-amber-900">{issueCounters.pending}</p>
+                  </div>
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4">
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-blue-700">In Progress</p>
+                    <p className="mt-1 text-2xl font-black text-blue-900">{issueCounters.progress}</p>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50/80 p-4">
+                    <p className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-700">Resolved</p>
+                    <p className="mt-1 text-2xl font-black text-emerald-900">{issueCounters.resolved}</p>
+                  </div>
+                </div>
+
+                <DashboardBarChart
+                  title="Issue Categories"
+                  subtitle="Most common issue types in this PG"
+                  data={ownerCategoryChart}
+                  xKey="name"
+                  dataKey="value"
+                  tone="emerald"
+                />
+
                 {/* Filter Bar */}
-                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center">
+                <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center sticky top-2 z-10">
                   <Filter size={16} className="text-slate-400 shrink-0" />
-                  <div className="relative flex-1 min-w-[160px]">
+                  <div className="relative flex-1 min-w-40">
                     <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                     <input type="text" placeholder="Search issues..." value={filterSearch} onChange={e => setFilterSearch(e.target.value)}
                       className="w-full pl-8 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-primary/20 font-medium" />
@@ -474,8 +602,16 @@ export default function OwnerDashboard({ session }) {
                       {options.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   ))}
-                  {(filterPriority || filterStatus || filterCategory || filterSearch) && (
-                    <button onClick={() => { setFilterPriority(''); setFilterStatus(''); setFilterCategory(''); setFilterSearch(''); }}
+                  <div className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg">
+                    <ArrowUpDown size={13} className="text-slate-400" />
+                    <select value={filterTime} onChange={e => setFilterTime(e.target.value)}
+                      className="bg-transparent outline-none font-semibold text-slate-600 cursor-pointer">
+                      <option value="recent">Most Recent</option>
+                      <option value="oldest">Most Old</option>
+                    </select>
+                  </div>
+                  {(filterPriority || filterStatus || filterCategory || filterSearch || filterTime !== 'recent') && (
+                    <button onClick={() => { setFilterPriority(''); setFilterStatus(''); setFilterCategory(''); setFilterSearch(''); setFilterTime('recent'); }}
                       className="text-xs font-bold text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 transition-all">
                       Clear
                     </button>
@@ -483,7 +619,7 @@ export default function OwnerDashboard({ session }) {
                 </div>
 
                 {filteredIssues.length === 0 ? (
-                  <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">
+                  <div className="p-12 border border-dashed border-slate-300 rounded-4xl bg-slate-50 text-center text-slate-500 font-medium">
                     {issues.length === 0 ? 'No issues reported yet ☕' : 'No issues match the current filters.'}
                   </div>
                 ) : filteredIssues.map(issue => {
@@ -555,7 +691,7 @@ export default function OwnerDashboard({ session }) {
                   <Users size={24} className="text-primary" /> Resident Profiles & Issues
                 </h2>
                 {issuesByMember.length === 0 ? (
-                  <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">No residents have joined yet.</div>
+                  <div className="p-12 border border-dashed border-slate-300 rounded-4xl bg-slate-50 text-center text-slate-500 font-medium">No residents have joined yet.</div>
                 ) : issuesByMember.map(member => {
                   const isExpanded = expandedResident === member.id;
                   const memberIssues = member.memberIssues;
@@ -616,12 +752,12 @@ export default function OwnerDashboard({ session }) {
             {activeTab === 'workers' && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Wrench size={24} className="text-primary" /> Manage Technicians</h2>
-                <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-4xl p-6 shadow-sm">
                   <h3 className="font-extrabold text-slate-900 mb-5 flex items-center gap-2"><Plus size={16} className="text-primary" /> Add New Technician</h3>
                   <form onSubmit={handleAddWorker} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="sm:col-span-2 flex gap-3">
                       <input type="text" placeholder="Full Name" required value={workerName} onChange={e => setWorkerName(e.target.value)} className={inputClass} />
-                      <select value={workerRole} onChange={e => setWorkerRole(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm font-semibold cursor-pointer min-w-[160px]">
+                      <select value={workerRole} onChange={e => setWorkerRole(e.target.value)} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/20 shadow-sm font-semibold cursor-pointer min-w-40">
                         <option value="plumber">🔧 Plumber</option><option value="electrician">⚡ Electrician</option>
                         <option value="cleaner">🧹 Cleaner</option><option value="maintenance">🔨 Maintenance</option>
                       </select>
@@ -636,7 +772,7 @@ export default function OwnerDashboard({ session }) {
                   </form>
                 </div>
                 {workers.length === 0 ? (
-                  <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">No technicians added yet.</div>
+                  <div className="p-12 border border-dashed border-slate-300 rounded-4xl bg-slate-50 text-center text-slate-500 font-medium">No technicians added yet.</div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {workers.map(worker => (
@@ -645,7 +781,7 @@ export default function OwnerDashboard({ session }) {
                           <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center shrink-0 text-xl">{workerRoleEmoji[worker.role]}</div>
                           <div>
                             <h3 className="font-bold text-slate-900">{worker.name}</h3>
-                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider capitalize">{worker.role}</p>
+                            <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">{worker.role}</p>
                             {worker.phone && <p className="text-xs text-slate-500 font-medium mt-1 flex items-center gap-1"><Phone size={11} /> {worker.phone}</p>}
                             {worker.email && <p className="text-xs text-slate-500 font-medium flex items-center gap-1"><Mail size={11} /> {worker.email}</p>}
                           </div>
@@ -668,7 +804,7 @@ export default function OwnerDashboard({ session }) {
                   </div>
                 </div>
                 {members.length === 0 ? (
-                  <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">No residents yet.</div>
+                  <div className="p-12 border border-dashed border-slate-300 rounded-4xl bg-slate-50 text-center text-slate-500 font-medium">No residents yet.</div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     {members.map(member => {
@@ -737,7 +873,7 @@ export default function OwnerDashboard({ session }) {
             {activeTab === 'pg_info' && (
               <div className="space-y-6">
                 <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><Sliders size={24} className="text-primary" /> Edit PG Settings</h2>
-                <div className="bg-white border border-slate-200 rounded-[2rem] p-6 shadow-sm">
+                <div className="bg-white border border-slate-200 rounded-4xl p-6 shadow-sm">
                   <form onSubmit={handleUpdatePGInfo} className="space-y-5">
                     <div>
                       <label className="block text-xs font-extrabold text-slate-400 uppercase tracking-wider mb-2">Description</label>
@@ -784,7 +920,7 @@ export default function OwnerDashboard({ session }) {
             {/* ── NEW COMMUNITY TAB ── */}
             {activeTab === 'new_community' && (
               <div className="flex flex-col items-center justify-center min-h-[50vh] max-w-md mx-auto text-center space-y-6">
-                <div className="w-24 h-24 bg-white border border-slate-200 shadow-sm rounded-[2rem] flex items-center justify-center"><Building2 size={40} className="text-primary" /></div>
+                <div className="w-24 h-24 bg-white border border-slate-200 shadow-sm rounded-4xl flex items-center justify-center"><Building2 size={40} className="text-primary" /></div>
                 <h2 className="text-3xl font-extrabold text-slate-900">Create a New PG</h2>
                 <form onSubmit={handleCreateCommunity} className="w-full space-y-4">
                   <input type="text" placeholder="PG Name" required value={newCommunityName} onChange={e => setNewCommunityName(e.target.value)} className={inputClass + ' text-center text-xl'} />

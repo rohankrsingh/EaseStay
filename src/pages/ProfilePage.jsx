@@ -60,11 +60,12 @@ export default function ProfilePage({ session }) {
     setSaving(false);
   };
 
-  const roleLabel = { resident: 'Resident', owner: 'PG Owner', worker: 'Technician' };
+  const roleLabel = { resident: 'Resident', owner: 'PG Owner', worker: 'Technician', admin: 'Admin' };
   const roleBadge = {
     resident: 'bg-blue-50 text-blue-600 border-blue-200',
     owner: 'bg-primary/10 text-primary border-primary/20',
-    worker: 'bg-amber-50 text-amber-600 border-amber-200'
+    worker: 'bg-amber-50 text-amber-600 border-amber-200',
+    admin: 'bg-red-50 text-red-700 border-red-200'
   };
 
   if (loading) return (

@@ -11,7 +11,13 @@ export default function MobileNavbar({ role, activeTab, setActiveTab, notificati
     await supabase.auth.signOut();
   };
 
-  const navItems = role === 'resident' ? [
+  const navItems = role === 'admin' ? [
+    { id: 'overview', label: 'Overview' },
+    { id: 'communities', label: 'Communities' },
+    { id: 'users', label: 'Users' },
+    { id: 'tasks', label: 'Tasks' },
+    { id: 'profile', label: 'My Profile' },
+  ] : role === 'resident' ? [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'overview', label: 'Overview' },
     { id: 'profile', label: 'My Profile' },
@@ -34,9 +40,9 @@ export default function MobileNavbar({ role, activeTab, setActiveTab, notificati
   };
 
   return (
-    <div className="md:hidden sticky top-0 z-[60] bg-white border-b border-slate-200 shadow-sm">
+    <div className="md:hidden sticky top-0 z-60 bg-white border-b border-slate-200 shadow-sm">
       <div className="flex items-center justify-between px-5 py-4">
-        <h2 className="text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-600 tracking-tight">
+        <h2 className="text-xl font-extrabold bg-clip-text text-transparent bg-linear-to-r from-primary to-purple-600 tracking-tight">
           EaseStay
         </h2>
         <div className="flex items-center gap-4">

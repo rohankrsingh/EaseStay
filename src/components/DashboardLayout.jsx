@@ -21,6 +21,13 @@ import {
 } from "lucide-react";
 
 const navByRole = {
+  admin: [
+    { title: "Overview",      id: "overview",    icon: LayoutDashboardIcon },
+    { title: "Communities",   id: "communities", icon: Building2Icon },
+    { title: "Users",         id: "users",       icon: UsersIcon },
+    { title: "Tasks",         id: "tasks",       icon: ClipboardListIcon },
+    { title: "My Profile",    id: "profile",     icon: UserIcon },
+  ],
   owner: [
     { title: "Communities",        id: "communities_overview", icon: Building2Icon },
     { title: "Issue Management",   id: "issues",               icon: AlertCircleIcon },

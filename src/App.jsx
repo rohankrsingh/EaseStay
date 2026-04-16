@@ -5,6 +5,7 @@ import Auth from './pages/Auth';
 import LandingPage from './pages/LandingPage';
 import ResidentDashboard from './pages/ResidentDashboard';
 import OwnerDashboard from './pages/OwnerDashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
 import CommunitiesPage from './pages/CommunitiesPage';
 import CommunityDetailPage from './pages/CommunityDetailPage';
@@ -37,6 +38,7 @@ function App() {
           <Route path="/communities/:id" element={<CommunityDetailPage />} />
           <Route path="/auth" element={!session ? <Auth /> : <Navigate to="/dashboard" />} />
           <Route path="/dashboard" element={session ? <RoleBasedRouter session={session} /> : <Navigate to="/auth" />} />
+          <Route path="/admin" element={session ? <RoleBasedRouter session={session} /> : <Navigate to="/auth" />} />
         </Routes>
       </BrowserRouter>
     </div>
@@ -49,7 +51,7 @@ function CoOwnerDashboard({ session }) {
   return (
     <div>
       {/* Floating mode badge */}
-      <div className="fixed top-4 right-4 z-[80] flex items-center gap-1 bg-white border border-slate-200 shadow-xl rounded-2xl p-1">
+      <div className="fixed top-4 right-4 z-80 flex items-center gap-1 bg-white border border-slate-200 shadow-xl rounded-2xl p-1">
         <button
           onClick={() => setMode('resident')}
           className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${mode === 'resident' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
@@ -113,6 +115,7 @@ function RoleBasedRouter({ session }) {
     return <div className="flex h-screen items-center justify-center text-slate-500 bg-slate-50 font-medium">Loading profile...</div>;
   }
 
+  if (role === 'admin') return <AdminDashboard session={session} />;
   if (role === 'owner') return <OwnerDashboard session={session} />;
   if (role === 'worker') return <WorkerDashboard session={session} />;
   if (isCoOwner) return <CoOwnerDashboard session={session} />;

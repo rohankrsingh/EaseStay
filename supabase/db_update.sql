@@ -1,6 +1,46 @@
 -- Update members schema
 ALTER TABLE public.members ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
 
+-- Add admin role to users
+ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'admin';
+
+-- Enable profile policies for admin management
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public profiles are viewable by everyone." ON public.profiles;
+CREATE POLICY "Public profiles are viewable by everyone." ON public.profiles
+  FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Users can insert their own profile." ON public.profiles;
+CREATE POLICY "Users can insert their own profile." ON public.profiles
+  FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Users can update own profile." ON public.profiles;
+CREATE POLICY "Users can update own profile." ON public.profiles
+  FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can update any profile." ON public.profiles;
+CREATE POLICY "Admins can update any profile." ON public.profiles
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
+
 -- Optional: Since existing members might be Null, let's make them 'active'
 UPDATE public.members SET status = 'active' WHERE status IS NULL;
 
@@ -17,6 +57,7 @@ ALTER TABLE public.communities ADD COLUMN IF NOT EXISTS features text[];
 ALTER TABLE public.communities ADD COLUMN IF NOT EXISTS location_address text;
 ALTER TABLE public.communities ADD COLUMN IF NOT EXISTS map_embed_url text;
 ALTER TABLE public.communities ADD COLUMN IF NOT EXISTS free_rooms integer DEFAULT 0;
+ALTER TABLE public.communities ADD COLUMN IF NOT EXISTS status text DEFAULT 'active';
 
 -- Drop any conflicting member status constraints
 ALTER TABLE public.members DROP CONSTRAINT IF EXISTS members_status_check;
@@ -150,7 +191,7 @@ SELECT
                       (
                         CASE
                           WHEN COALESCE(i.issues_resolved, 0) > 0
-                            THEN LEAST2.8(5::numeric, GREATEST(0::numeric, 5::numeric - (COALESCE(i.avg_resolution_hours, 0) / 16::numeric)))
+                            THEN LEAST(5::numeric, GREATEST(0::numeric, 5::numeric - (COALESCE(i.avg_resolution_hours, 0) / 16::numeric)))
                           ELSE 2.5::numeric
                         END
                       ) * 0.25
@@ -203,21 +244,6 @@ CREATE POLICY "Reviews: resident can update own"
   ON public.reviews FOR UPDATE
   USING (auth.uid() = resident_id)
   WITH CHECK (auth.uid() = resident_id);
-CREATE OR REPLACE VIEW public.community_metrics AS
-WITH issue_stats AS (
-  SELECT
-    i.community_id,
-    COUNT(*)::numeric AS issues_resolved,
-    COALESCE(AVG(EXTRACT(EPOCH FROM (i.updated_at - i.created_at)) / 3600.0), 0)::numeric AS avg_resolution_hours
-  FROM public.issues i
-  WHERE i.status = 'Resolved'
-  GROUP BY i.community_id
-),
-…FROM public.communities c
-LEFT JOIN issue_stats i ON i.community_id = c.id
-LEFT JOIN review_stats rs ON rs.community_id = c.id
-LEFT JOIN member_stats ms ON ms.community_id = c.id
-CROSS JOIN global_stats g;
 -- ─────────────────────────────────────────────────────────
 -- COMMUNITIES TABLE POLICIES
 -- ─────────────────────────────────────────────────────────
@@ -229,13 +255,29 @@ ALTER TABLE public.communities ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Communities: public read" ON public.communities;
 CREATE POLICY "Communities: public read"
   ON public.communities FOR SELECT
-  USING (true);
+  USING (status is null OR status <> 'banned');
 
 -- Allow authenticated owners to create communities
 DROP POLICY IF EXISTS "Communities: owner insert" ON public.communities;
 CREATE POLICY "Communities: owner insert"
   ON public.communities FOR INSERT
   WITH CHECK (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Communities: owner select" ON public.communities;
+CREATE POLICY "Communities: owner select"
+  ON public.communities FOR SELECT
+  USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Communities: admin select all" ON public.communities;
+CREATE POLICY "Communities: admin select all"
+  ON public.communities FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
 
 -- Allow owners to update THEIR OWN communities (covers PG Info save)
 DROP POLICY IF EXISTS "Communities: owner update" ON public.communities;
@@ -244,11 +286,40 @@ CREATE POLICY "Communities: owner update"
   USING (auth.uid() = owner_id)
   WITH CHECK (auth.uid() = owner_id);
 
+DROP POLICY IF EXISTS "Communities: admin update" ON public.communities;
+CREATE POLICY "Communities: admin update"
+  ON public.communities FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
+
 -- Allow owners to delete their own communities
 DROP POLICY IF EXISTS "Communities: owner delete" ON public.communities;
 CREATE POLICY "Communities: owner delete"
   ON public.communities FOR DELETE
   USING (auth.uid() = owner_id);
+
+DROP POLICY IF EXISTS "Communities: admin delete" ON public.communities;
+CREATE POLICY "Communities: admin delete"
+  ON public.communities FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1
+      FROM public.profiles p
+      WHERE p.id = auth.uid() AND p.role::text = 'admin'
+    )
+  );
 
 -- ─────────────────────────────────────────────────────────
 -- STORAGE BUCKET: community-images

@@ -27,6 +27,13 @@ import {
 
 /* ── Per-role nav items (id maps to activeTab value in each dashboard) ── */
 const navByRole = {
+  admin: [
+    { title: "Overview",    id: "overview",    icon: LayoutDashboardIcon },
+    { title: "Communities", id: "communities", icon: Building2Icon },
+    { title: "Users",       id: "users",       icon: UsersIcon },
+    { title: "Tasks",       id: "tasks",       icon: ClipboardListIcon },
+    { title: "My Profile",  id: "profile",     icon: UserIcon },
+  ],
   owner: [
     { title: "Communities",        id: "communities_overview", icon: Building2Icon },
     { title: "Issue Management",   id: "issues",               icon: AlertCircleIcon },
@@ -55,7 +62,7 @@ const navSecondary = [
 /**
  * AppSidebar
  * @param {object} profile   – user profile from Supabase
- * @param {string} role      – "owner" | "resident" | "worker"
+ * @param {string} role      – "admin" | "owner" | "resident" | "worker"
  * @param {string} activeTab – currently active tab id
  * @param {fn}     onTabChange – callback(tabId) to switch tabs
  */
@@ -78,7 +85,7 @@ export function AppSidebar({ profile, role, activeTab, onTabChange, ...props }) 
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:!p-1.5">
+            <SidebarMenuButton asChild className="data-[slot=sidebar-menu-button]:p-1.5!">
               <a href="/">
                 <div className="flex h-6 w-6 items-center justify-center rounded-md bg-foreground text-background">
                   <Command className="h-3.5 w-3.5" />

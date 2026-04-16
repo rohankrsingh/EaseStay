@@ -21,7 +21,7 @@ export default function CommunitiesPage() {
   useEffect(() => {
     async function fetchCommunities() {
       const [{ data: comms }, { data: metrics }] = await Promise.all([
-        supabase.from('communities').select('*, profiles:owner_id(full_name)').order('created_at', { ascending: false }),
+        supabase.from('communities').select('*, profiles:owner_id(full_name)').or('status.is.null,status.eq.active').order('created_at', { ascending: false }),
         supabase.from('community_metrics').select('*')
       ]);
 

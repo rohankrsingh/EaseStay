@@ -66,6 +66,7 @@ export default function CommunityDetailPage() {
           .from('communities')
           .select('*, profiles:owner_id(full_name, phone, email: id)')
           .eq('id', id)
+          .or('status.is.null,status.eq.active')
           .maybeSingle(),
         supabase
           .from('reviews')
@@ -167,7 +168,7 @@ export default function CommunityDetailPage() {
 
       {/* Join Request Modal */}
       {showJoinModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-100 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-sm p-8 shadow-2xl relative">
             <button onClick={() => setShowJoinModal(false)} className="absolute top-4 right-4 p-2 rounded-xl hover:bg-slate-100"><X size={18} /></button>
             <h2 className="text-2xl font-black text-slate-900 mb-1">Join {com.name}</h2>
@@ -188,7 +189,7 @@ export default function CommunityDetailPage() {
         </div>
       )}
 
-      <main className="max-w-[1200px] mx-auto px-4 sm:px-6 pt-28">
+      <main className="max-w-300 mx-auto px-4 sm:px-6 pt-28">
         {/* Title Section */}
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div>
@@ -226,13 +227,13 @@ export default function CommunityDetailPage() {
         </div>
 
         {/* Image Carousel */}
-        <div className="relative group rounded-[2rem] overflow-hidden bg-slate-100 aspect-[16/9] md:aspect-[21/9] mb-12 shadow-inner border border-slate-200">
+        <div className="relative group rounded-4xl overflow-hidden bg-slate-100 aspect-video md:aspect-21/9 mb-12 shadow-inner border border-slate-200">
           <img 
             src={images[activeImage]} 
             alt="Community Area" 
             className="w-full h-full object-cover transition-all duration-700 hover:scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+          <div className="absolute inset-0 bg-linear-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
           
           {images.length > 1 && (
             <>
@@ -336,9 +337,9 @@ export default function CommunityDetailPage() {
           <div className="space-y-6">
             
             {/* Location Panel */}
-            <div className="bg-white border text-center border-slate-200 rounded-[2rem] overflow-hidden shadow-lg p-1">
+            <div className="bg-white border text-center border-slate-200 rounded-4xl overflow-hidden shadow-lg p-1">
                <div className="h-48 bg-slate-100 rounded-t-[1.75rem] relative flex flex-col items-center justify-center overflow-hidden border border-slate-200">
-                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] opacity-60" />
+                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-size-[24px_24px] opacity-60" />
                  <div className="relative z-10 w-12 h-12 bg-red-500 rounded-full flex items-center justify-center shadow-xl animate-bounce shadow-red-500/20 text-white">
                    <MapPin size={24} />
                  </div>
@@ -354,7 +355,7 @@ export default function CommunityDetailPage() {
             </div>
 
             {/* Manager Info */}
-            <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-6 text-center">
+            <div className="bg-slate-50 border border-slate-200 rounded-4xl p-6 text-center">
               <div className="w-20 h-20 bg-violet-100 text-violet-600 font-black text-2xl flex items-center justify-center rounded-full mx-auto mb-4 border-4 border-white shadow-sm uppercase">
                  {(com.profiles?.full_name || 'U').charAt(0)}
               </div>

@@ -2,32 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import DashboardLayout from '../components/DashboardLayout';
 import { Building2, Shield, Users, Ban, BadgeCheck, Search, RefreshCw, UserCog, Mail, Camera, Save, FileText, AlertTriangle, Clock3, CheckCircle2, ArrowRight, Sparkles, Target, ClipboardList, Star, UserRoundCog, Layers3 } from 'lucide-react';
-
-function AdminConfirmModal({ title, message, confirmLabel = 'Confirm', tone = 'slate', onConfirm, onCancel }) {
-  const toneClasses = tone === 'danger'
-    ? 'bg-red-600 hover:bg-red-700 text-white'
-    : 'bg-slate-900 hover:bg-slate-800 text-white';
-
-  return (
-    <div className="fixed inset-0 z-100 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="w-full max-w-md rounded-3xl bg-white border border-slate-200 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 mb-3">
-          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${tone === 'danger' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-700'}`}>
-            <Shield size={20} />
-          </div>
-          <div>
-            <h3 className="text-lg font-black text-slate-900">{title}</h3>
-            <p className="text-sm text-slate-500 font-medium">{message}</p>
-          </div>
-        </div>
-        <div className="flex gap-3 mt-6">
-          <button onClick={onCancel} className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 font-bold text-slate-600 hover:bg-slate-50 transition-colors">Cancel</button>
-          <button onClick={onConfirm} className={`flex-1 rounded-xl px-4 py-2.5 font-bold transition-colors ${toneClasses}`}>{confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { toast } from 'sonner';
 
 const roleLabel = {
   resident: 'Resident',
@@ -46,7 +21,6 @@ export default function AdminDashboard({ session }) {
   const [search, setSearch] = useState('');
   const [communityFilter, setCommunityFilter] = useState('all');
   const [busyId, setBusyId] = useState(null);
-  const [confirm, setConfirm] = useState(null);
   const [profileDraft, setProfileDraft] = useState({ full_name: '', phone: '', bio: '' });
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState(null);
@@ -163,10 +137,9 @@ export default function AdminDashboard({ session }) {
       if (error) throw error;
       await fetchData();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setBusyId(null);
-      setConfirm(null);
     }
   };
 
@@ -177,10 +150,9 @@ export default function AdminDashboard({ session }) {
       if (error) throw error;
       await fetchData();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setBusyId(null);
-      setConfirm(null);
     }
   };
 
@@ -191,7 +163,7 @@ export default function AdminDashboard({ session }) {
       if (error) throw error;
       await fetchData();
     } catch (error) {
-      alert(error.message);
+      toast.error(error.message);
     } finally {
       setBusyId(null);
     }
@@ -220,17 +192,6 @@ export default function AdminDashboard({ session }) {
 
   return (
     <DashboardLayout profile={profile} role="admin" title="Admin Console" activeTab={activeTab} setActiveTab={setActiveTab}>
-      {confirm && (
-        <AdminConfirmModal
-          title={confirm.title}
-          message={confirm.message}
-          confirmLabel={confirm.confirmLabel}
-          tone={confirm.tone}
-          onConfirm={confirm.onConfirm}
-          onCancel={() => setConfirm(null)}
-        />
-      )}
-
       <div className="p-4 sm:p-6 lg:p-8 space-y-8">
         {activeTab === 'overview' && (
           <>
@@ -287,24 +248,20 @@ export default function AdminDashboard({ session }) {
                         </div>
                         <div className="flex flex-col gap-2 shrink-0">
                           <button
-                            onClick={() => setConfirm({
-                              title: isBanned ? 'Unban community?' : 'Ban community?',
-                              message: isBanned ? 'This community will become active again.' : 'This community will be hidden from public pages.',
-                              confirmLabel: isBanned ? 'Unban' : 'Ban',
-                              tone: isBanned ? 'slate' : 'danger',
-                              onConfirm: () => updateCommunityStatus(community, isBanned ? 'active' : 'banned'),
+                            onClick={() => toast(isBanned ? 'Unban community?' : 'Ban community?', {
+                              description: isBanned ? 'This community will become active again.' : 'This community will be hidden from public pages.',
+                              action: { label: isBanned ? 'Unban' : 'Ban', onClick: () => updateCommunityStatus(community, isBanned ? 'active' : 'banned') },
+                              cancel: { label: 'Cancel' },
                             })}
                             className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${isBanned ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
                           >
                             {isBanned ? 'Unban' : 'Ban'}
                           </button>
                           <button
-                            onClick={() => setConfirm({
-                              title: 'Delete community?',
-                              message: 'This permanently removes the community and all related records.',
-                              confirmLabel: 'Delete',
-                              tone: 'danger',
-                              onConfirm: () => deleteCommunity(community),
+                            onClick={() => toast('Delete community?', {
+                              description: 'This permanently removes the community and all related records.',
+                              action: { label: 'Delete', onClick: () => deleteCommunity(community) },
+                              cancel: { label: 'Cancel' },
                             })}
                             className="rounded-xl px-3 py-2 text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
                           >
@@ -400,24 +357,20 @@ export default function AdminDashboard({ session }) {
                         <td className="px-4 py-4 rounded-r-2xl">
                           <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => setConfirm({
-                                title: isBanned ? 'Unban community?' : 'Ban community?',
-                                message: isBanned ? 'This restores public access.' : 'This hides the community from public pages.',
-                                confirmLabel: isBanned ? 'Unban' : 'Ban',
-                                tone: isBanned ? 'slate' : 'danger',
-                                onConfirm: () => updateCommunityStatus(community, isBanned ? 'active' : 'banned'),
+                              onClick={() => toast(isBanned ? 'Unban community?' : 'Ban community?', {
+                                description: isBanned ? 'This restores public access.' : 'This hides the community from public pages.',
+                                action: { label: isBanned ? 'Unban' : 'Ban', onClick: () => updateCommunityStatus(community, isBanned ? 'active' : 'banned') },
+                                cancel: { label: 'Cancel' },
                               })}
                               className={`rounded-xl px-3 py-2 text-xs font-bold transition-colors ${isBanned ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'bg-red-50 text-red-700 hover:bg-red-100'}`}
                             >
                               {isBanned ? 'Unban' : 'Ban'}
                             </button>
                             <button
-                              onClick={() => setConfirm({
-                                title: 'Delete community?',
-                                message: 'This permanently removes the community and all dependent records.',
-                                confirmLabel: 'Delete',
-                                tone: 'danger',
-                                onConfirm: () => deleteCommunity(community),
+                              onClick={() => toast('Delete community?', {
+                                description: 'This permanently removes the community and all dependent records.',
+                                action: { label: 'Delete', onClick: () => deleteCommunity(community) },
+                                cancel: { label: 'Cancel' },
                               })}
                               className="rounded-xl px-3 py-2 text-xs font-bold bg-slate-900 text-white hover:bg-slate-800 transition-colors"
                             >

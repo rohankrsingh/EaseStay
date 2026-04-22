@@ -9,22 +9,7 @@ import {
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
   Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders, Building2, ArrowUpDown
 } from 'lucide-react';
-
-// ── Confirmation Modal ──
-function ConfirmModal({ title, message, onConfirm, onCancel }) {
-  return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-60 flex items-center justify-center p-4" onClick={onCancel}>
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl p-7 w-full max-w-sm" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-extrabold text-slate-900 mb-2">{title}</h3>
-        <p className="text-slate-500 text-sm font-medium mb-6">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50 transition-all">Cancel</button>
-          <button onClick={onConfirm} className="flex-1 py-2.5 rounded-xl bg-slate-900 text-white font-bold hover:bg-slate-800 transition-all">Confirm</button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { toast } from 'sonner';
 
 // ── Emergency Alert Modal ──
 function EmergencyAlert({ issue, onDismiss }) {
@@ -82,7 +67,6 @@ export default function OwnerDashboard({ session }) {
   const [addingWorker, setAddingWorker] = useState(false);
 
   // Modals
-  const [confirm, setConfirm] = useState(null);
   const [emergency, setEmergency] = useState(null);
   const [selectedMember, setSelectedMember] = useState(null);
   const [expandedResident, setExpandedResident] = useState(null);
@@ -194,7 +178,7 @@ export default function OwnerDashboard({ session }) {
       
       if (error) throw error;
       
-      alert("PG Info updated successfully.");
+      toast.success("PG Info updated successfully.");
       setActiveCommunity({
         ...activeCommunity,
         description: commDesc,
@@ -205,7 +189,7 @@ export default function OwnerDashboard({ session }) {
       });
       fetchData();
     } catch (err) {
-      alert("Error updating PG Info: " + err.message);
+      toast.error("Error updating PG Info: " + err.message);
     } finally {
       setUpdatingComm(false);
     }
@@ -231,7 +215,7 @@ export default function OwnerDashboard({ session }) {
       const { data } = supabase.storage.from('community-images').getPublicUrl(filePath);
       setCommImages(prev => [...prev, data.publicUrl]);
     } catch (err) {
-      alert("Upload Error: " + err.message);
+      toast.error("Upload Error: " + err.message);
     } finally {
       setUploadingImage(false);
     }
@@ -241,12 +225,12 @@ export default function OwnerDashboard({ session }) {
     e.preventDefault();
     const code = Math.random().toString(36).substring(2, 8).toUpperCase();
     const { data, error } = await supabase.from('communities').insert([{ name: newCommunityName, owner_id: session.user.id, join_code: code }]).select();
-    if (error) { alert(error.message); return; }
+    if (error) { toast.error(error.message); return; }
     if (data) { setCommunities([...communities, data[0]]); setActiveCommunity(data[0]); setNewCommunityName(''); fetchCommunityData(data[0].id); }
   };
 
   const askThenRun = useCallback((title, message, action) => {
-    setConfirm({ title, message, onConfirm: async () => { setConfirm(null); await action(); } });
+    toast(title, { description: message, action: { label: 'Confirm', onClick: action }, cancel: { label: 'Cancel' } });
   }, []);
 
   const updateIssueStatus = useCallback((issueId, newStatus, currentStatus) => {
@@ -254,7 +238,7 @@ export default function OwnerDashboard({ session }) {
     askThenRun('Update Status', `Change status to "${newStatus}"?`, async () => {
       setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
       const { error } = await supabase.from('issues').update({ status: newStatus }).eq('id', issueId);
-      if (error) { alert(error.message); fetchCommunityData(activeCommunity.id); }
+      if (error) { toast.error(error.message); fetchCommunityData(activeCommunity.id); }
     });
   }, [activeCommunity, askThenRun]);
 
@@ -271,23 +255,37 @@ export default function OwnerDashboard({ session }) {
   const handleAddWorker = async (e) => {
     e.preventDefault(); setAddingWorker(true);
     const { error } = await supabase.from('workers').insert([{ name: workerName, role: workerRole, phone: workerPhone, email: workerEmail, community_id: activeCommunity.id }]);
-    if (error) alert(error.message);
+    if (error) toast.error(error.message);
     else { setWorkerName(''); setWorkerPhone(''); setWorkerEmail(''); fetchCommunityData(activeCommunity.id); }
     setAddingWorker(false);
   };
 
   const handleDeleteWorker = async (workerId) => {
-    if (!window.confirm('Remove this technician?')) return;
-    await supabase.from('workers').delete().eq('id', workerId);
-    fetchCommunityData(activeCommunity.id);
+    toast('Remove this technician?', {
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          await supabase.from('workers').delete().eq('id', workerId);
+          fetchCommunityData(activeCommunity.id);
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   };
 
   const handleBanMember = useCallback(async (memberId, currentStatus) => {
     const newStatus = currentStatus === 'banned' ? 'active' : 'banned';
     const label = newStatus === 'banned' ? 'Ban this member from the community?' : 'Unban this member?';
-    if (!window.confirm(label)) return;
-    await supabase.from('members').update({ status: newStatus }).eq('id', memberId);
-    fetchCommunityData(activeCommunity.id);
+    toast(label, {
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          await supabase.from('members').update({ status: newStatus }).eq('id', memberId);
+          fetchCommunityData(activeCommunity.id);
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   }, [activeCommunity]);
 
   const handleApproveMember = useCallback(async (memberId) => {
@@ -298,16 +296,31 @@ export default function OwnerDashboard({ session }) {
   const handleSetRole = useCallback(async (memberId, currentRole) => {
     const newRole = currentRole === 'co_owner' ? 'resident' : 'co_owner';
     const label = newRole === 'co_owner' ? 'Make this member a Co-Owner?' : 'Remove co-owner privileges?';
-    if (!window.confirm(label)) return;
-    await supabase.from('members').update({ community_role: newRole }).eq('id', memberId);
-    fetchCommunityData(activeCommunity.id);
+    toast(label, {
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          await supabase.from('members').update({ community_role: newRole }).eq('id', memberId);
+          fetchCommunityData(activeCommunity.id);
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   }, [activeCommunity]);
 
   const handleKickMember = useCallback(async (memberId, isPending = false) => {
     const msg = isPending ? 'Reject this join request?' : 'Are you sure you want to kick this member from the community? They will lose all access.';
-    if (!window.confirm(msg)) return;
-    await supabase.from('members').delete().eq('id', memberId);
-    fetchCommunityData(activeCommunity.id);
+    toast('Confirmation', {
+      description: msg,
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          await supabase.from('members').delete().eq('id', memberId);
+          fetchCommunityData(activeCommunity.id);
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   }, [activeCommunity]);
 
   // Filtered issues
@@ -410,7 +423,6 @@ export default function OwnerDashboard({ session }) {
     <DashboardLayout profile={profile} role="owner" title="Owner Dashboard" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }}>
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
       {emergency && <EmergencyAlert issue={emergency} onDismiss={() => setEmergency(null)} />}
-      {confirm && <ConfirmModal title={confirm.title} message={confirm.message} onConfirm={confirm.onConfirm} onCancel={() => setConfirm(null)} />}
 
       {/* Member detail modal */}
       {selectedMember && (

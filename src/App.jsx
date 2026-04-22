@@ -9,6 +9,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import WorkerDashboard from './pages/WorkerDashboard';
 import CommunitiesPage from './pages/CommunitiesPage';
 import CommunityDetailPage from './pages/CommunityDetailPage';
+import { Toaster } from './components/ui/sonner';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -41,6 +42,7 @@ function App() {
           <Route path="/admin" element={session ? <RoleBasedRouter session={session} /> : <Navigate to="/auth" />} />
         </Routes>
       </BrowserRouter>
+      <Toaster position="top-center" richColors />
     </div>
   );
 }

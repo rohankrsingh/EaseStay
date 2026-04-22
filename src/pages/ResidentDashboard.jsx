@@ -5,6 +5,7 @@ import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
 import { DashboardTrendChart, DashboardStatusChart } from '../components/dashboard-visuals';
 import { Mic, Building2, Plus, Send, AlertTriangle, CheckCircle, Clock, Phone, Mail, Loader2, Zap, BrainCircuit, Video, Trash2, LogOut, Star } from 'lucide-react';
+import { toast } from 'sonner';
 
 const GROQ_SYSTEM_PROMPT = `You are EaseStay's AI issue categorization engine for a PG accommodation system.
 Analyze the resident's issue report and return ONLY valid JSON with no extra text.
@@ -93,9 +94,9 @@ export default function ResidentDashboard({ session }) {
     }, { onConflict: 'community_id, resident_id' });
     
     setIsSubmittingRating(false);
-    if (error) alert("Error submitting rating: " + error.message);
+    if (error) toast.error("Error submitting rating: " + error.message);
     else {
-      alert("Thanks for your feedback!");
+      toast.success("Thanks for your feedback!");
       setShowRatingModal(false);
     }
   };
@@ -199,9 +200,16 @@ export default function ResidentDashboard({ session }) {
   useEffect(() => { fetchUserData(); }, [fetchUserData]);
 
   const deleteIssue = useCallback(async (issueId) => {
-    if (!window.confirm('Delete this issue request?')) return;
-    await supabase.from('issues').delete().eq('id', issueId).eq('user_id', session.user.id);
-    setIssues(prev => prev.filter(i => i.id !== issueId));
+    toast('Delete this issue request?', {
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          await supabase.from('issues').delete().eq('id', issueId).eq('user_id', session.user.id);
+          setIssues(prev => prev.filter(i => i.id !== issueId));
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   }, [session.user.id]);
 
   useEffect(() => {
@@ -223,29 +231,37 @@ export default function ResidentDashboard({ session }) {
       if (joinErr) throw joinErr;
       await logRoomHistory({ communityId: com.id, roomNo: roomNumber, changeType: 'joined' });
       fetchUserData();
-    } catch (err) { alert(err.message); }
+    } catch (err) { toast.error(err.message); }
   }, [joinCode, roomNumber, session.user.id, fetchUserData, logRoomHistory]);
 
   const handleLeaveCommunity = useCallback(async () => {
     if (!memberInfo) return;
-    if (!window.confirm('Are you sure you want to leave this PG? You can still view your past room history after leaving.')) return;
-    try {
-      const { error } = await supabase.from('members')
-        .update({ status: 'left' })
-        .eq('user_id', session.user.id)
-        .eq('community_id', memberInfo.community_id);
-      if (error) throw error;
+    toast('Are you sure you want to leave this PG?', {
+      description: 'You can still view your past room history after leaving.',
+      action: {
+        label: 'Confirm',
+        onClick: async () => {
+          try {
+            const { error } = await supabase.from('members')
+              .update({ status: 'left' })
+              .eq('user_id', session.user.id)
+              .eq('community_id', memberInfo.community_id);
+            if (error) throw error;
 
-      await logRoomHistory({ communityId: memberInfo.community_id, roomNo: memberInfo.room_number, changeType: 'left' });
+            await logRoomHistory({ communityId: memberInfo.community_id, roomNo: memberInfo.room_number, changeType: 'left' });
 
-      setMemberInfo(null);
-      setCommunity(null);
-      setIssues([]);
-      setActiveTab('dashboard');
-      fetchRoomHistory();
-    } catch (err) {
-      alert('Error leaving community: ' + err.message);
-    }
+            setMemberInfo(null);
+            setCommunity(null);
+            setIssues([]);
+            setActiveTab('dashboard');
+            fetchRoomHistory();
+          } catch (err) {
+            toast.error('Error leaving community: ' + err.message);
+          }
+        }
+      },
+      cancel: { label: 'Cancel' }
+    });
   }, [memberInfo, session.user.id, fetchRoomHistory, logRoomHistory]);
 
   const handleChangeRoom = useCallback(async (e) => {
@@ -285,7 +301,7 @@ export default function ResidentDashboard({ session }) {
 
   const handleVoiceInput = () => {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('Speech recognition not supported. Try Chrome.'); return;
+      toast.error('Speech recognition not supported. Try Chrome.'); return;
     }
     if (isListening) { recognitionRef.current?.stop(); setIsListening(false); return; }
     const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -352,7 +368,7 @@ export default function ResidentDashboard({ session }) {
       setTimeout(() => setSubmitSuccess(false), 6000);
 
       if (ai.is_emergency) {
-        setTimeout(() => alert('🚨 Emergency detected! Your PG Owner has been notified.'), 100);
+        setTimeout(() => toast.error('🚨 Emergency detected! Your PG Owner has been notified.', { duration: 10000 }), 100);
       }
 
       fetchIssues(memberInfo.community_id);
@@ -388,7 +404,7 @@ export default function ResidentDashboard({ session }) {
       const { error } = await supabase.from('issues').update({ resident_verified: true }).eq('id', issueId);
       if (error) throw error;
       setIssues(prev => prev.map(i => i.id === issueId ? { ...i, resident_verified: true } : i));
-    } catch (err) { alert('Error verifying resolution: ' + err.message); }
+    } catch (err) { toast.error('Error verifying resolution: ' + err.message); }
   };
 
   const handleDisputeResolution = async (issueId) => {
@@ -397,7 +413,7 @@ export default function ResidentDashboard({ session }) {
         .update({ status: 'In Progress', priority: 'High', resident_verified: false }).eq('id', issueId);
       if (error) throw error;
       setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: 'In Progress', priority: 'High', resident_verified: false } : i));
-    } catch (err) { alert('Error reopening issue: ' + err.message); }
+    } catch (err) { toast.error('Error reopening issue: ' + err.message); }
   };
 
   const getRoomHistoryLabel = (type) => {

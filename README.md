@@ -24,7 +24,9 @@ By leveraging state-of-the-art AI (Groq LLaMA 3.1) and real-time backend synchro
 
 ### 🎥 Product Demo
 
-![EaseStay Demo Video](public/video.mp4)
+<video src="https://github.com/VIKASGULIA17/EaseStay/raw/main/public/video.mp4" controls="controls" width="100%" muted="muted" loop="loop" autoplay="autoplay">
+  Your browser does not support the video tag.
+</video>
 
 ---
 

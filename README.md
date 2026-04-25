@@ -1,161 +1,148 @@
-# EaseStay
+<div align="center">
+  
+# 🏨 EaseStay
 
-EaseStay is a voice-first PG management platform built with React, Vite, Supabase, and Groq AI. Residents can report issues by text or speech, the app classifies and prioritizes them automatically, owners can manage communities and assign technicians, and workers can update issue status in real time.
+**The Next-Generation AI-Powered PG & Community Management Platform**
 
-## What It Does
+[![React](https://img.shields.io/badge/React-19-blue?style=for-the-badge&logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-8-purple?style=for-the-badge&logo=vite)](https://vitejs.dev/)
+[![Supabase](https://img.shields.io/badge/Supabase-Realtime-green?style=for-the-badge&logo=supabase)](https://supabase.com/)
+[![Groq](https://img.shields.io/badge/Groq_AI-LLaMA_3.1-orange?style=for-the-badge)](https://groq.com/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?style=for-the-badge&logo=tailwind-css)](https://tailwindcss.com/)
 
-EaseStay is designed around three roles:
+[**Features**](#-key-features) • [**Tech Stack**](#-tech-stack) • [**Architecture**](#-architecture) • [**Getting Started**](#-getting-started) • [**Deployment**](#-deployment)
 
-- Residents raise issues from their dashboard using voice input or plain text.
-- PG owners create communities, manage members, review issues, and assign technicians.
-- Technicians view assigned work and update issue status as they progress.
+</div>
 
-The app also includes:
+---
 
-- AI-powered issue categorization and emergency detection.
-- Real-time Supabase subscriptions for issue updates and notifications.
-- Role-based routing and authentication.
-- Community join codes for resident onboarding.
-- Optional technician contact details and video-call workflow for issue resolution.
+## 🚀 Product Overview
 
-## Tech Stack
+EaseStay is not just a repository; it is a **fully functional, production-ready SaaS product** designed to revolutionize how Paying Guest (PG) accommodations, hostels, and residential communities operate. 
 
-- React 19
-- Vite 8
-- React Router
-- Redux Toolkit
-- Supabase Auth, Database, and Realtime
-- Groq LLaMA 3.1 for issue analysis
-- Tailwind CSS 4
-- Lucide React icons
+By leveraging state-of-the-art AI (Groq LLaMA 3.1) and real-time backend synchronization (Supabase), EaseStay eliminates the friction between residents facing issues and owners managing them. It introduces a seamless, voice-first issue reporting system that automatically prioritizes, categorizes, and alerts management of emergencies.
 
-## Project Structure
+### 🎥 Product Demo
 
-- `src/App.jsx` - session handling and role-based routing
-- `src/pages/` - landing page, auth, and role dashboards
-- `src/components/` - shared UI such as sidebar and notifications
-- `src/lib/supabase.js` - Supabase client setup
-- `supabase/schema.sql` - database schema and RLS policies
-- `supabase/functions/process-issue/` - backend function scaffolding
+![EaseStay Demo Video](public/video.mp4)
 
-## Features
+---
 
-### Resident Experience
+## ✨ Key Features
 
-- Sign up or sign in with email and password.
-- Join a PG community with a join code.
-- Submit issue reports by typing or using browser speech recognition.
-- Automatically receive AI-generated category, priority, and emergency detection.
-- Track issue status and assigned technician details in real time.
+### 👤 For Residents (The Experience)
+*   **Voice-First Reporting:** Ditch the long forms. Residents can use native browser Speech Recognition to describe an issue out loud.
+*   **Real-time Tracking:** See exactly when a technician is assigned, when work begins, and when it is resolved, all updated in real time.
+*   **Seamless Onboarding:** Join a community instantly using a secure 6-digit join code provided by the owner.
 
-### Owner Experience
+### 👑 For PG Owners (The Command Center)
+*   **AI Auto-Triage:** Groq AI processes all incoming issues, automatically detecting categories (Plumbing, Electrical, etc.), setting priority levels, and flagging life-safety or structural emergencies.
+*   **Community Management:** Create multiple communities, manage residents, and onboard technicians.
+*   **Smart Assignments:** Assign technicians to specific issues with one click and track their progress via a Kanban-style workflow.
+*   **Emergency Alerts:** Immediate notification badges and visual indicators for critical issues.
 
-- Create and manage communities.
-- View residents and technicians by community.
-- Review incoming issues with priority, category, and status filters.
-- Assign or remove technicians from issues.
-- Receive emergency alerts and notification badges.
-- Open a quick video call for issue coordination.
+### 🛠️ For Technicians (The Workflow)
+*   **Task Dashboard:** A distraction-free, role-specific dashboard displaying assigned work.
+*   **One-Click Status Updates:** Easily move tickets from `Pending` to `In Progress` to `Resolved`.
+*   **Video Coordination:** Optional built-in video-call coordination for remote troubleshooting.
 
-### Technician Experience
+---
 
-- View issues assigned to the technician account.
-- Update each issue between Pending, In Progress, and Resolved.
-- Work from a clean dashboard focused on task execution.
+## 💻 Tech Stack
 
-## Prerequisites
+We built EaseStay focusing on speed, scalability, and modern UI/UX paradigms:
 
-- Node.js 18 or newer
-- A Supabase project
-- A Groq API key for AI issue analysis
+*   **Frontend Framework:** React 19 + Vite 8
+*   **Routing & State:** React Router + Redux Toolkit
+*   **Styling:** Tailwind CSS 4 + Lucide React Icons
+*   **Backend & Auth:** Supabase (PostgreSQL, Auth, Realtime Subscriptions)
+*   **AI Engine:** Groq API (LLaMA 3.1 model for sub-second NLP processing)
+*   **Hosting:** Vercel (Optimized SPA routing)
 
-## Environment Variables
+---
 
-Create a `.env` file in the project root with the following values:
+## 🧠 Architecture
 
-```env
-VITE_SUPABASE_URL=your_supabase_project_url
-VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
-VITE_GROQ_API_KEY=your_groq_api_key
+EaseStay operates on a robust, role-based architecture protected by Supabase Row Level Security (RLS). 
+
+```mermaid
+graph TD
+    Client[React Client SPA] -->|Realtime Subscriptions| SupabaseDB[(Supabase PostgreSQL)]
+    Client -->|Auth State| SupabaseAuth[Supabase Auth]
+    
+    subgraph AI Triage Pipeline
+        Client -->|Submits Issue| GroqAPI{Groq LLaMA 3.1}
+        GroqAPI -->|Returns Priority & Category| Client
+        Client -->|Saves Enriched Issue| SupabaseDB
+    end
+
+    subgraph Role Routing
+        SupabaseAuth -->|Resident| ResidentDashboard[Resident View]
+        SupabaseAuth -->|Owner| OwnerDashboard[Owner Dashboard]
+        SupabaseAuth -->|Technician| TechDashboard[Technician Panel]
+    end
 ```
 
-The app also accepts `VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY` as a fallback for the Supabase client if `VITE_SUPABASE_ANON_KEY` is not set.
+---
 
-## Supabase Setup
+## 🛠️ Getting Started
 
-1. Create a new Supabase project.
-2. Run the SQL in `supabase/schema.sql` to create the required tables, enums, triggers, and row-level security policies.
-3. Configure authentication in Supabase so email/password sign-in is enabled.
-4. Add the environment variables above to your local `.env` file.
+### Prerequisites
 
-The schema includes these core tables:
+*   Node.js 18+
+*   A [Supabase](https://supabase.com/) Project
+*   A [Groq](https://console.groq.com/) API Key
 
-- `profiles`
-- `communities`
-- `members`
-- `workers`
-- `issues`
+### Installation
 
-The app expects row-level security to be enabled and relies on the policies defined in the schema file.
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/your-username/EaseStay.git
+    cd EaseStay
+    ```
 
-## Local Development
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-Install dependencies:
+3.  **Configure Environment Variables:**
+    Create a `.env` file in the root directory:
+    ```env
+    VITE_SUPABASE_URL=your_supabase_project_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    VITE_GROQ_API_KEY=your_groq_api_key
+    ```
 
-```bash
-npm install
-```
+4.  **Database Setup:**
+    Navigate to your Supabase SQL Editor and run the contents of `supabase/schema.sql` to generate the required tables, triggers, and Row Level Security (RLS) policies.
 
-Start the development server:
+5.  **Start the Development Server:**
+    ```bash
+    npm run dev
+    ```
+    Your app will be running at `http://localhost:5173`.
 
-```bash
-npm run dev
-```
+---
 
-Build for production:
+## 🌐 Deployment
 
-```bash
-npm run build
-```
+EaseStay is optimized for Vercel deployment. A `vercel.json` file is included in the project root to ensure React Router client-side routes (SPAs) do not return 404 errors on page reload.
 
-Preview the production build locally:
+1. Push your code to GitHub.
+2. Connect your repository to Vercel.
+3. Add the required Environment Variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GROQ_API_KEY`) in the Vercel dashboard.
+4. Deploy!
 
-```bash
-npm run preview
-```
+---
 
-Run lint checks:
+## 🔒 Security & Data Integrity
 
-```bash
-npm run lint
-```
+*   **Row-Level Security (RLS):** Policies are strictly enforced at the database level. A resident can only see their own issues, while an owner can see all issues within their specific community.
+*   **Role Validation:** Role assignment (`resident`, `owner`, `worker`) is securely verified before loading application routes.
 
-## App Flow
+---
 
-1. A user opens the landing page and signs in or signs up.
-2. Supabase stores the session and loads the role from `profiles`.
-3. Residents join a community with a join code and submit issues.
-4. Groq AI classifies the issue and flags emergencies when needed.
-5. Owners review the issue, assign a technician, and monitor resolution.
-6. Workers update the issue status until it is resolved.
-
-## Notes On Voice Input
-
-Voice reporting uses the browser Speech Recognition API. In practice, Chrome-based browsers provide the best support. If speech recognition is unavailable, residents can still submit issues using text input.
-
-## Deployment Notes
-
-- Make sure the production environment has the same Supabase and Groq environment variables.
-- Ensure the Supabase schema and RLS policies are applied before users sign in.
-- Realtime subscriptions must be enabled in Supabase for live updates and notifications.
-
-## Troubleshooting
-
-- If authentication fails, verify that the Supabase URL and anon key are correct.
-- If AI analysis fails, verify that `VITE_GROQ_API_KEY` is present and valid.
-- If residents cannot join a community, confirm the join code exists in the `communities` table.
-- If updates do not appear in real time, check Supabase Realtime settings and table subscriptions.
-
-## License
-
-No license has been specified yet. Add one if you plan to publish or share the project publicly.
+<div align="center">
+  <i>Built to eliminate the chaos of community management.</i>
+</div>

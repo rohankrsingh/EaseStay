@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import NotificationCenter from "./NotificationCenter";
 import { supabase } from "@/lib/supabase";
 import {
   LayoutDashboard as LayoutDashboardIcon,
@@ -55,6 +56,11 @@ export default function DashboardLayout({
   activeTab,
   setActiveTab,
   children,
+  // Notification props (optional, only used for owner role)
+  notifications,
+  unreadCount,
+  markAllRead,
+  clearAll,
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
@@ -146,6 +152,17 @@ export default function DashboardLayout({
               <Menu className="h-5 w-5" />
             </button>
             <h1 className="text-lg font-bold text-slate-900 capitalize">{title}</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            {role === 'owner' && notifications && (
+              <NotificationCenter
+                notifications={notifications}
+                unreadCount={unreadCount || 0}
+                markAllRead={markAllRead}
+                clearAll={clearAll}
+                onNavigate={(tab) => setActiveTab(tab)}
+              />
+            )}
           </div>
         </header>
 

@@ -3,11 +3,13 @@ import { supabase } from '../lib/supabase';
 import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
+import useNotifications from '../hooks/useNotifications';
 import { DashboardTrendChart, DashboardStatusChart, DashboardBarChart } from '../components/dashboard-visuals';
 import {
   Building, Users, AlertCircle, CheckCircle2, Clock, Plus, Wrench, Trash2, X,
   Mail, Phone, ChevronDown, Video, Filter, Search, ChevronRight, ChevronUp, Bell,
-  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders, Building2, ArrowUpDown
+  Shield, ShieldOff, Crown, ToggleLeft, ToggleRight, Sliders, Building2, ArrowUpDown,
+  RefreshCw, Archive
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -78,8 +80,11 @@ export default function OwnerDashboard({ session }) {
   const [filterSearch, setFilterSearch] = useState('');
   const [filterTime, setFilterTime] = useState('recent');
 
-  // Notification count
-  const [notifCount, setNotifCount] = useState(0);
+  // Issue view sub-tabs (active / archive)
+  const [issueView, setIssueView] = useState('active');
+
+  // Syncing state
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // PG Info form state
   const [commDesc, setCommDesc] = useState('');
@@ -89,6 +94,9 @@ export default function OwnerDashboard({ session }) {
   const [commImages, setCommImages] = useState([]);
   const [updatingComm, setUpdatingComm] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Notification center hook
+  const { notifications, unreadCount, markAllRead, clearAll } = useNotifications(activeCommunity?.id);
 
   useEffect(() => {
     if (activeCommunity) {
@@ -137,7 +145,7 @@ export default function OwnerDashboard({ session }) {
     setWorkers(workersData || []);
   };
 
-  // Real-time: detect emergency issues, update state, count notifications
+  // Real-time: detect emergency issues, update state
   useEffect(() => {
     if (!activeCommunity) return;
     const channel = supabase.channel('owner_realtime')
@@ -146,7 +154,6 @@ export default function OwnerDashboard({ session }) {
         filter: `community_id=eq.${activeCommunity.id}`,
       }, (payload) => {
         const issue = payload.new;
-        setNotifCount(n => n + 1);
         // Trigger emergency alert
         if (issue.priority === 'Critical' || issue.category === 'Emergency') {
           setEmergency(issue);
@@ -162,6 +169,15 @@ export default function OwnerDashboard({ session }) {
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, [activeCommunity]);
+
+  // Manual sync handler
+  const handleSync = useCallback(async () => {
+    if (!activeCommunity || isSyncing) return;
+    setIsSyncing(true);
+    await fetchCommunityData(activeCommunity.id);
+    setIsSyncing(false);
+    toast.success('Data synced successfully');
+  }, [activeCommunity, isSyncing]);
 
   const handleUpdatePGInfo = async (e) => {
     e.preventDefault();
@@ -233,24 +249,32 @@ export default function OwnerDashboard({ session }) {
     toast(title, { description: message, action: { label: 'Confirm', onClick: action }, cancel: { label: 'Cancel' } });
   }, []);
 
-  const updateIssueStatus = useCallback((issueId, newStatus, currentStatus) => {
+  // Optimistic status update with rollback
+  const updateIssueStatus = useCallback(async (issueId, newStatus, currentStatus) => {
     if (newStatus === currentStatus) return;
-    askThenRun('Update Status', `Change status to "${newStatus}"?`, async () => {
-      setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
-      const { error } = await supabase.from('issues').update({ status: newStatus }).eq('id', issueId);
-      if (error) { toast.error(error.message); fetchCommunityData(activeCommunity.id); }
-    });
-  }, [activeCommunity, askThenRun]);
+    const snapshot = [...issues];
+    setIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
+    toast.success(`Status → "${newStatus}"`);
+    const { error } = await supabase.from('issues').update({ status: newStatus }).eq('id', issueId);
+    if (error) {
+      setIssues(snapshot);
+      toast.error('Failed to update: ' + error.message);
+    }
+  }, [issues]);
 
-  const assignWorker = useCallback((issueId, workerId, currentWorkerId) => {
+  // Optimistic worker assignment with rollback
+  const assignWorker = useCallback(async (issueId, workerId, currentWorkerId) => {
     if (workerId === (currentWorkerId || '')) return;
     const worker = workers.find(w => w.id === workerId);
-    const label = worker ? `Assign "${worker.name}" to this issue?` : 'Remove assigned technician?';
-    askThenRun('Technician Assignment', label, async () => {
-      setIssues(prev => prev.map(i => i.id === issueId ? { ...i, assigned_worker_id: workerId || null, workers: worker || null } : i));
-      await supabase.from('issues').update({ assigned_worker_id: workerId || null }).eq('id', issueId);
-    });
-  }, [workers, askThenRun]);
+    const snapshot = [...issues];
+    setIssues(prev => prev.map(i => i.id === issueId ? { ...i, assigned_worker_id: workerId || null, workers: worker || null } : i));
+    toast.success(worker ? `Assigned ${worker.name}` : 'Technician removed');
+    const { error } = await supabase.from('issues').update({ assigned_worker_id: workerId || null }).eq('id', issueId);
+    if (error) {
+      setIssues(snapshot);
+      toast.error('Failed to assign: ' + error.message);
+    }
+  }, [workers, issues]);
 
   const handleAddWorker = async (e) => {
     e.preventDefault(); setAddingWorker(true);
@@ -323,8 +347,15 @@ export default function OwnerDashboard({ session }) {
     });
   }, [activeCommunity]);
 
-  // Filtered issues
-  const filteredIssues = issues.filter(issue => {
+  // Split issues into active vs archived
+  const activeIssues = issues.filter(i => i.status !== 'Resolved');
+  const archivedIssues = issues.filter(i => i.status === 'Resolved');
+
+  // Currently visible issues based on sub-tab
+  const viewIssues = issueView === 'active' ? activeIssues : archivedIssues;
+
+  // Filtered issues (apply filters on the current view)
+  const filteredIssues = viewIssues.filter(issue => {
     if (filterPriority && issue.priority !== filterPriority) return false;
     if (filterCategory && issue.category !== filterCategory) return false;
     if (filterStatus && issue.status !== filterStatus) return false;
@@ -420,7 +451,9 @@ export default function OwnerDashboard({ session }) {
   ];
 
   return (
-    <DashboardLayout profile={profile} role="owner" title="Owner Dashboard" activeTab={activeTab} setActiveTab={(tab) => { setActiveTab(tab); if (tab === 'issues') setNotifCount(0); }}>
+    <DashboardLayout profile={profile} role="owner" title="Owner Dashboard" activeTab={activeTab} setActiveTab={setActiveTab}
+      notifications={notifications} unreadCount={unreadCount} markAllRead={markAllRead} clearAll={clearAll}
+    >
       {activeCommunity && <NotificationSystem communityId={activeCommunity.id} role="owner" />}
       {emergency && <EmergencyAlert issue={emergency} onDismiss={() => setEmergency(null)} />}
 
@@ -465,11 +498,6 @@ export default function OwnerDashboard({ session }) {
                 <div>
                   <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight mb-2">PG Dashboard</h1>
                   <p className="text-slate-500 font-medium">Hello, {profile?.full_name}</p>
-                  {notifCount > 0 && activeTab !== 'issues' && (
-                    <button onClick={() => { setActiveTab('issues'); setNotifCount(0); }} className="mt-2 flex items-center gap-2 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-full animate-pulse">
-                      <Bell size={12} /> {notifCount} new issue{notifCount > 1 ? 's' : ''} — View
-                    </button>
-                  )}
                 </div>
                 </div>
               {/* Multi-community switcher */}
@@ -526,9 +554,27 @@ export default function OwnerDashboard({ session }) {
             {/* ── ISSUES TAB ── */}
             {activeTab === 'issues' && (
               <div className="space-y-5">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><AlertCircle size={24} className="text-primary" /> Active Issues</h2>
-                  <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">{filteredIssues.length} / {issues.length}</span>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <h2 className="text-2xl font-extrabold text-slate-900 flex items-center gap-2"><AlertCircle size={24} className="text-primary" /> Issues</h2>
+                  <div className="flex items-center gap-2">
+                    <button onClick={handleSync} disabled={isSyncing}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-primary/30 hover:text-primary transition-all shadow-sm disabled:opacity-50">
+                      <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Syncing...' : 'Sync'}
+                    </button>
+                    <span className="text-xs font-bold text-slate-400 bg-white border border-slate-200 px-3 py-1.5 rounded-full shadow-sm">{filteredIssues.length} / {viewIssues.length}</span>
+                  </div>
+                </div>
+
+                {/* Active / Archive sub-tabs */}
+                <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-max">
+                  <button onClick={() => setIssueView('active')}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${issueView === 'active' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                    <AlertCircle size={14} /> Active <span className="text-xs opacity-70">({activeIssues.length})</span>
+                  </button>
+                  <button onClick={() => setIssueView('archive')}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${issueView === 'archive' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                    <Archive size={14} /> Archive <span className="text-xs opacity-70">({archivedIssues.length})</span>
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

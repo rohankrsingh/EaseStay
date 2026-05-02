@@ -4,7 +4,8 @@ import DashboardLayout from '../components/DashboardLayout';
 import ProfilePage from './ProfilePage';
 import NotificationSystem from '../components/NotificationSystem';
 import { DashboardTrendChart, DashboardStatusChart } from '../components/dashboard-visuals';
-import { Wrench, CheckCircle, Clock, AlertTriangle, Plus, Building2, ChevronDown, Video, Phone, Mail, X } from 'lucide-react';
+import { Wrench, CheckCircle, Clock, AlertTriangle, Plus, Building2, ChevronDown, Video, Phone, Mail, X, RefreshCw, Archive } from 'lucide-react';
+import { toast } from 'sonner';
 // Shared Jitsi room link per issue ID
 function VideoCallButton({ issueId, issueTitle, compact = false }) {
   const roomName = `easestay-issue-${issueId.slice(0, 8)}`;
@@ -26,6 +27,12 @@ export default function WorkerDashboard({ session }) {
   const [activeCommunity, setActiveCommunity] = useState(null);
   const [assignedIssues, setAssignedIssues] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Task view sub-tabs (active / archive)
+  const [taskView, setTaskView] = useState('active');
+
+  // Syncing state
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Join community flow
   const [joinCode, setJoinCode] = useState('');
@@ -118,10 +125,26 @@ export default function WorkerDashboard({ session }) {
     fetchData();
   };
 
-  const updateStatus = async (issueId, newStatus) => {
-    await supabase.from('issues').update({ status: newStatus }).eq('id', issueId);
-    if (activeCommunity) fetchIssues(activeCommunity.id);
-  };
+  // Optimistic status update with rollback
+  const updateStatus = useCallback(async (issueId, newStatus) => {
+    const snapshot = [...assignedIssues];
+    setAssignedIssues(prev => prev.map(i => i.id === issueId ? { ...i, status: newStatus } : i));
+    toast.success(`Status → "${newStatus}"`);
+    const { error } = await supabase.from('issues').update({ status: newStatus }).eq('id', issueId);
+    if (error) {
+      setAssignedIssues(snapshot);
+      toast.error('Failed to update: ' + error.message);
+    }
+  }, [assignedIssues]);
+
+  // Manual sync handler
+  const handleSync = useCallback(async () => {
+    if (!activeCommunity || isSyncing) return;
+    setIsSyncing(true);
+    await fetchIssues(activeCommunity.id);
+    setIsSyncing(false);
+    toast.success('Tasks synced');
+  }, [activeCommunity, isSyncing, fetchIssues]);
 
   const getPriorityColor = (p) => {
     if (p === 'Critical') return 'text-red-600 bg-red-50 border-red-200';
@@ -174,6 +197,11 @@ export default function WorkerDashboard({ session }) {
     { name: 'Resolved', value: taskSummary.resolved, color: '#10b981' },
   ].filter((item) => item.value > 0);
 
+  // Split tasks into active vs archived
+  const activeTasks = assignedIssues.filter(i => i.status !== 'Resolved');
+  const archivedTasks = assignedIssues.filter(i => i.status === 'Resolved');
+  const viewTasks = taskView === 'active' ? activeTasks : archivedTasks;
+
   return (
     <DashboardLayout profile={profile} role="worker" title="Technician Dashboard" activeTab={activeTab} setActiveTab={setActiveTab}>
         {activeCommunity && <NotificationSystem communityId={activeCommunity.community_id} role="worker" />}
@@ -189,6 +217,12 @@ export default function WorkerDashboard({ session }) {
               </div>
               <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Hi, {profile?.full_name} 👷</h1>
               <p className="text-slate-500 mt-2 font-medium">Your assigned tasks across all communities.</p>
+              <div className="flex items-center gap-2 mt-3">
+                <button onClick={handleSync} disabled={isSyncing}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:border-primary/30 hover:text-primary transition-all shadow-sm disabled:opacity-50">
+                  <RefreshCw size={13} className={isSyncing ? 'animate-spin' : ''} /> {isSyncing ? 'Syncing...' : 'Sync'}
+                </button>
+              </div>
             </header>
 
             {/* Community switcher */}
@@ -262,14 +296,28 @@ export default function WorkerDashboard({ session }) {
               </div>
             )}
 
-            {!loading && myCommunities.length > 0 && assignedIssues.length === 0 && (
+            {!loading && myCommunities.length > 0 && viewTasks.length === 0 && (
               <div className="p-12 border border-dashed border-slate-300 rounded-[2rem] bg-slate-50 text-center text-slate-500 font-medium">
-                No issues assigned to you in this community yet ✅
+                {taskView === 'active' ? 'No active issues assigned to you ✅' : 'No resolved tasks in archive yet.'}
+              </div>
+            )}
+
+            {/* Active / Archive sub-tabs */}
+            {myCommunities.length > 0 && (
+              <div className="flex gap-1 p-1 bg-slate-100 rounded-xl w-max">
+                <button onClick={() => setTaskView('active')}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${taskView === 'active' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <AlertTriangle size={14} /> Active <span className="text-xs opacity-70">({activeTasks.length})</span>
+                </button>
+                <button onClick={() => setTaskView('archive')}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold transition-all ${taskView === 'archive' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                  <Archive size={14} /> Archive <span className="text-xs opacity-70">({archivedTasks.length})</span>
+                </button>
               </div>
             )}
 
             <div className="space-y-4">
-              {assignedIssues.map(issue => (
+              {viewTasks.map(issue => (
                 <div key={issue.id} className="border border-slate-200 rounded-2xl bg-white shadow-sm hover:shadow-md transition-all overflow-hidden">
                   <div className={`h-1 w-full ${getPriorityBar(issue.priority)}`} />
                   <div className="p-5">
